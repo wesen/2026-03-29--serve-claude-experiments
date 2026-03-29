@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Artifact Server</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Geneva', 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 13px;
+    background: #aaa;
+    background-image: repeating-linear-gradient(0deg, transparent, transparent 1px, rgba(0,0,0,0.03) 1px, rgba(0,0,0,0.03) 2px);
+    min-height: 100vh;
+    padding: 30px;
+  }
+  .window {
+    max-width: 800px;
+    margin: 0 auto;
+    border: 2px solid #000;
+    box-shadow: 4px 4px 0 #000;
+    background: #fff;
+  }
+  .titlebar {
+    height: 22px;
+    background: repeating-linear-gradient(180deg, #fff 0px, #fff 1px, #000 1px, #000 2px);
+    border-bottom: 2px solid #000;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    position: relative;
+  }
+  .titlebar .close-box {
+    width: 14px; height: 14px;
+    border: 2px solid #000;
+    background: #fff;
+    flex-shrink: 0;
+  }
+  .titlebar .title {
+    position: absolute;
+    left: 50%; transform: translateX(-50%);
+    background: #fff;
+    padding: 0 10px;
+    font-weight: bold;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .content {
+    padding: 20px;
+  }
+  .content h1 {
+    font-size: 16px;
+    margin-bottom: 4px;
+  }
+  .content .subtitle {
+    color: #666;
+    margin-bottom: 16px;
+    font-size: 11px;
+  }
+  .artifact-list {
+    list-style: none;
+  }
+  .artifact-item {
+    border: 1px solid #000;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: stretch;
+  }
+  .artifact-item:hover {
+    background: #f0f0f0;
+  }
+  .badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 50px;
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    border-right: 1px solid #000;
+    flex-shrink: 0;
+  }
+  .badge-html { background: #e8e8e8; }
+  .badge-jsx { background: #d0d0d0; }
+  .artifact-info {
+    padding: 8px 12px;
+    flex: 1;
+  }
+  .artifact-info a {
+    text-decoration: none;
+    color: #000;
+    font-weight: bold;
+    font-size: 13px;
+  }
+  .artifact-info a:hover {
+    text-decoration: underline;
+  }
+  .artifact-meta {
+    font-size: 10px;
+    color: #666;
+    margin-top: 2px;
+  }
+  .empty {
+    text-align: center;
+    color: #888;
+    padding: 40px 20px;
+  }
+</style>
+</head>
+<body>
+  <div class="window">
+    <div class="titlebar">
+      <div class="close-box"></div>
+      <div class="title">Artifact Server</div>
+    </div>
+    <div class="content">
+      <h1>Claude Artifacts</h1>
+      <div class="subtitle">Serving from: {{.Dir}} &middot; {{len .Artifacts}} artifact{{if ne (len .Artifacts) 1}}s{{end}}</div>
+      {{if .Artifacts}}
+      <ul class="artifact-list">
+        {{range .Artifacts}}
+        <li class="artifact-item">
+          <div class="badge badge-{{.Type}}">{{.Type}}</div>
+          <div class="artifact-info">
+            <a href="/view/{{.Name}}">{{.Title}}</a>
+            <div class="artifact-meta">{{.Filename}} &middot; {{.Size}} bytes &middot; {{.ModifiedAt.Format "2006-01-02 15:04"}}</div>
+          </div>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <div class="empty">No artifacts found. Drop .html or .jsx files into the directory.</div>
+      {{end}}
+    </div>
+  </div>
+</body>
+</html>

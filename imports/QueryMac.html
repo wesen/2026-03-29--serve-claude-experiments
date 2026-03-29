@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>QueryMac — SQL IDE</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --syn-kw:#4a6fa5;
+  --syn-str:#5f8a42;
+  --syn-num:#9e6b32;
+  --syn-cmt:#7a6b99;
+  --syn-fn:#7a4a5a;
+  --syn-op:#2a7a72;
+  --syn-id:#5a3a6a;
+}
+html,body{
+  width:100%;height:100vh;overflow:hidden;
+  font-family:'Chicago','Charcoal',Geneva,'Helvetica Neue',Helvetica,sans-serif;
+  font-size:12px;background:#fff;color:#000;
+  -webkit-font-smoothing:none;
+}
+
+/* ── MENU BAR ── */
+#menu-bar{
+  height:20px;background:#fff;border-bottom:1px solid #000;
+  display:flex;align-items:center;user-select:none;
+  position:relative;z-index:50;
+}
+.mi{padding:1px 10px;cursor:default;font-size:12px;height:100%;display:flex;align-items:center;}
+.mi:hover,.mi.open{background:#000;color:#fff;}
+.mi-apple{font-size:15px;padding:1px 8px;}
+#clock{margin-left:auto;margin-right:8px;font-size:11px;color:#444;}
+
+/* dropdown */
+.dropdown{
+  position:fixed;background:#fff;border:1px solid #000;box-shadow:2px 2px 0 #000;
+  min-width:160px;z-index:200;display:none;
+}
+.dropdown.open{display:block;}
+.dd-item{padding:3px 16px;cursor:default;font-size:11px;display:flex;align-items:center;justify-content:space-between;}
+.dd-item:hover{background:#000;color:#fff;}
+.dd-sep{height:1px;background:#000;margin:2px 0;}
+.dd-item .shortcut{color:#888;font-size:10px;}
+.dd-item:hover .shortcut{color:#ccc;}
+
+/* ── LAYOUT ── */
+#app{
+  height:calc(100vh - 40px);display:flex;flex-direction:column;overflow:hidden;
+}
+#main-window{
+  flex:1;border:1px solid #000;margin:3px;display:flex;flex-direction:column;overflow:hidden;
+}
+
+/* ── TITLE BAR ── */
+.titlebar{
+  height:19px;border-bottom:1px solid #000;display:flex;align-items:center;
+  padding:0 3px;gap:3px;cursor:default;user-select:none;flex-shrink:0;
+  background:repeating-linear-gradient(to right,#000 0,#000 1px,#fff 1px,#fff 2px);
+}
+.titlebar .title-label{
+  position:absolute;left:50%;transform:translateX(-50%);
+  background:#fff;padding:0 6px;font-size:11px;font-weight:bold;white-space:nowrap;
+}
+.wbox{
+  width:13px;height:13px;border:1px solid #000;background:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:8px;cursor:pointer;flex-shrink:0;line-height:1;
+}
+.wbox:hover{background:#000;color:#fff;}
+.wbox.zoom{margin-left:auto;}
+
+/* ── TOOLBAR ── */
+#toolbar{
+  height:26px;border-bottom:1px solid #000;background:#f0f0f0;
+  display:flex;align-items:center;padding:0 6px;gap:4px;flex-shrink:0;
+}
+.tbtn{
+  height:18px;padding:0 8px;border:1px solid #000;background:#fff;
+  font-family:inherit;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:3px;
+  white-space:nowrap;
+}
+.tbtn:hover{background:#ddd;}
+.tbtn:active{background:#000;color:#fff;}
+.tbtn.run{background:#000;color:#fff;}
+.tbtn.run:hover{background:#333;}
+.tbtn.run:active{background:#666;}
+#qstatus{margin-left:auto;font-size:10px;color:#555;}
+
+/* ── BODY ── */
+#window-body{flex:1;display:flex;overflow:hidden;}
+
+/* ── SIDEBAR ── */
+#sidebar{
+  width:185px;min-width:100px;max-width:340px;border-right:1px solid #000;
+  display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;
+}
+.panel-head{
+  height:17px;border-bottom:1px solid #000;
+  background:repeating-linear-gradient(45deg,#000 0,#000 1px,#aaa 1px,#aaa 4px);
+  display:flex;align-items:center;padding:0 5px;
+  font-size:9px;font-weight:bold;color:#fff;letter-spacing:.5px;flex-shrink:0;
+}
+#db-tree{flex:1;overflow-y:auto;padding:2px 0;}
+.tree-db{border-bottom:1px solid #e0e0e0;}
+.tree-row{
+  padding:2px 4px;cursor:default;display:flex;align-items:center;gap:4px;
+  font-size:11px;white-space:nowrap;overflow:hidden;
+}
+.tree-row:hover,.tree-row.sel{background:#000;color:#fff;}
+.tree-row.tbl-row{padding-left:18px;font-size:10px;color:#444;}
+.tree-row.tbl-row:hover{color:#fff;}
+.toggler{
+  width:9px;height:9px;border:1px solid #000;display:flex;
+  align-items:center;justify-content:center;font-size:7px;flex-shrink:0;line-height:1;
+}
+.tree-row:hover .toggler,.tree-row.sel .toggler{border-color:#fff;}
+.tree-row.tbl-row:hover .toggler,.tree-row.tbl-row.sel .toggler{border-color:#fff;}
+
+/* sidebar resize */
+#sb-resize{
+  width:4px;cursor:ew-resize;flex-shrink:0;
+  background:repeating-linear-gradient(to bottom,#000 0,#000 1px,#fff 1px,#fff 3px);
+}
+
+/* ── MAIN AREA ── */
+#main-area{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+
+/* ── EDITOR ── */
+#editor-pane{
+  display:flex;flex-direction:column;border-bottom:1px solid #000;
+  height:220px;min-height:80px;flex-shrink:0;
+}
+.pane-head{
+  height:16px;background:#e4e4e4;border-bottom:1px solid #000;
+  display:flex;align-items:center;padding:0 6px;font-size:9px;font-weight:bold;
+  letter-spacing:.5px;flex-shrink:0;gap:6px;
+}
+#editor-wrap{flex:1;position:relative;overflow:hidden;}
+#line-gutter{
+  position:absolute;top:0;left:0;width:34px;height:100%;
+  background:#e8e8e8;border-right:1px solid #ccc;padding:4px 3px 4px 0;
+  text-align:right;font-family:'Courier New',Courier,monospace;font-size:12px;
+  line-height:18px;color:#888;overflow:hidden;user-select:none;white-space:pre;
+}
+#hl-layer{
+  position:absolute;top:0;left:34px;right:0;bottom:0;padding:4px 5px;
+  font-family:'Courier New',Courier,monospace;font-size:12px;line-height:18px;
+  white-space:pre;overflow:hidden;pointer-events:none;color:transparent;
+  word-break:break-all;
+}
+#sql-ta{
+  position:absolute;top:0;left:34px;right:0;bottom:0;padding:4px 5px;
+  border:none;outline:none;resize:none;background:transparent;
+  font-family:'Courier New',Courier,monospace;font-size:12px;line-height:18px;
+  color:#000;caret-color:#000;white-space:pre;overflow:auto;
+  spellcheck:false;tab-size:2;
+}
+
+/* syntax colors */
+.kw{color:var(--syn-kw);}
+.str{color:var(--syn-str);}
+.num{color:var(--syn-num);}
+.cmt{color:var(--syn-cmt);}
+.fn{color:var(--syn-fn);}
+.op{color:var(--syn-op);}
+.ident{color:var(--syn-id);}
+
+/* ── DRAG RESIZE ── */
+#vert-resize{
+  height:5px;cursor:ns-resize;flex-shrink:0;
+  background:repeating-linear-gradient(to right,#000 0,#000 1px,#fff 1px,#fff 3px);
+}
+
+/* ── RESULTS ── */
+#results-pane{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:60px;}
+#results-body{flex:1;overflow:auto;}
+.msg{padding:6px 10px;font-size:11px;border-bottom:1px solid #e0e0e0;}
+.msg.err{color:#7a0000;border-left:3px solid #7a0000;background:#fff5f5;}
+.msg.ok{color:#004a00;border-left:3px solid #004a00;background:#f5fff5;}
+.msg.info{color:#333;}
+
+.rtable{
+  width:100%;border-collapse:collapse;
+  font-family:'Courier New',Courier,monospace;font-size:11px;
+}
+.rtable th{
+  background:repeating-linear-gradient(45deg,#777 0,#777 1px,#ccc 1px,#ccc 4px);
+  border:1px solid #000;padding:2px 7px;text-align:left;
+  font-family:inherit;font-size:10px;font-weight:bold;position:sticky;top:0;
+  white-space:nowrap;cursor:default;
+}
+.rtable th:hover{background:#000;color:#fff;}
+.rtable td{
+  border-right:1px solid #d0d0d0;border-bottom:1px solid #d0d0d0;
+  padding:2px 7px;white-space:nowrap;max-width:280px;
+  overflow:hidden;text-overflow:ellipsis;
+}
+.rtable tr:nth-child(even) td{background:#f7f7f7;}
+.rtable tr:hover td{background:#000;color:#fff;}
+.null{color:#aaa;font-style:italic;}
+
+/* ── STATUS BAR ── */
+#status-bar{
+  height:18px;border-top:2px solid #000;background:#fff;
+  display:flex;align-items:center;padding:0 8px;gap:12px;font-size:10px;flex-shrink:0;
+}
+.sdot{
+  width:8px;height:8px;border-radius:50%;border:1px solid #000;
+  display:inline-block;vertical-align:middle;margin-right:4px;
+}
+.sdot.on{background:#000;}
+#s-rows,#s-time{color:#555;}
+#s-brand{margin-left:auto;color:#aaa;}
+
+/* ── DIALOG ── */
+.overlay{
+  position:fixed;inset:0;z-index:300;display:none;
+  background:rgba(0,0,0,.2);align-items:center;justify-content:center;
+}
+.overlay.open{display:flex;}
+.dialog{
+  background:#fff;border:2px solid #000;box-shadow:4px 4px 0 #000;min-width:310px;
+}
+.dlg-title{
+  background:repeating-linear-gradient(to right,#000 0,#000 1px,#fff 1px,#fff 2px);
+  height:21px;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:bold;cursor:default;user-select:none;
+}
+.dlg-title span{background:#fff;padding:0 8px;}
+.dlg-body{padding:14px 16px 8px;}
+.frow{display:flex;align-items:center;margin-bottom:9px;gap:8px;}
+.frow label{width:74px;font-size:11px;text-align:right;flex-shrink:0;color:#333;}
+.frow input,.frow select{
+  flex:1;height:20px;border:1px solid #000;padding:0 4px;
+  font-family:inherit;font-size:11px;outline:none;background:#fff;
+}
+.frow input:focus{box-shadow:1px 1px 0 #000;}
+.frow .short{flex:0 0 64px;}
+.dlg-foot{padding:6px 16px 12px;display:flex;justify-content:flex-end;gap:6px;}
+.dlg-foot .tbtn{height:20px;}
+
+/* ── SETUP DIALOG ── */
+#setup-code{
+  background:#f8f8f8;border:1px solid #ccc;padding:8px;
+  font-family:'Courier New',monospace;font-size:10px;
+  white-space:pre;overflow-x:auto;max-height:200px;overflow-y:auto;
+  line-height:15px;color:#222;
+}
+
+/* ── SCROLLBARS ── */
+::-webkit-scrollbar{width:13px;height:13px;}
+::-webkit-scrollbar-track{background:#fff;border:1px solid #ccc;}
+::-webkit-scrollbar-thumb{
+  background:repeating-linear-gradient(45deg,#888 0,#888 1px,#fff 1px,#fff 3px);
+  border:1px solid #999;
+}
+::-webkit-scrollbar-button{
+  background:#f0f0f0;border:1px solid #999;display:block;width:13px;height:13px;
+}
+::-webkit-scrollbar-button:vertical:decrement{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11'%3E%3Cpolygon points='5.5,2 9,8 2,8' fill='%23000'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:center;
+}
+::-webkit-scrollbar-button:vertical:increment{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11'%3E%3Cpolygon points='5.5,9 9,3 2,3' fill='%23000'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:center;
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ MENU BAR ═══ -->
+<div id="menu-bar">
+  <div class="mi mi-apple" id="mi-apple">&#63743;</div>
+  <div class="mi" id="mi-file">File</div>
+  <div class="mi" id="mi-edit">Edit</div>
+  <div class="mi" id="mi-query">Query</div>
+  <div class="mi" id="mi-db">Database</div>
+  <div class="mi" id="mi-help">Help</div>
+  <div id="clock"></div>
+</div>
+
+<!-- dropdowns -->
+<div class="dropdown" id="dd-file">
+  <div class="dd-item" data-action="new">New Query <span class="shortcut">⌘N</span></div>
+  <div class="dd-sep"></div>
+  <div class="dd-item" data-action="save">Save Query <span class="shortcut">⌘S</span></div>
+  <div class="dd-item" data-action="open">Open Query…</div>
+  <div class="dd-sep"></div>
+  <div class="dd-item" data-action="export">Export Results as CSV</div>
+</div>
+<div class="dropdown" id="dd-edit">
+  <div class="dd-item" data-action="undo">Undo <span class="shortcut">⌘Z</span></div>
+  <div class="dd-item" data-action="redo">Redo <span class="shortcut">⌘Y</span></div>
+  <div class="dd-sep"></div>
+  <div class="dd-item" data-action="selall">Select All <span class="shortcut">⌘A</span></div>
+  <div class="dd-item" data-action="copy">Copy <span class="shortcut">⌘C</span></div>
+  <div class="dd-sep"></div>
+  <div class="dd-item" data-action="fmt">Format SQL</div>
+</div>
+<div class="dropdown" id="dd-query">
+  <div class="dd-item" data-action="run">Run Query <span class="shortcut">⌘↵</span></div>
+  <div class="dd-item" data-action="runsel">Run Selection <span class="shortcut">⌘⇧↵</span></div>
+  <div class="dd-sep"></div>
+  <div class="dd-item" data-action="explain">Explain Query</div>
+  <div class="dd-item" data-action="clear">Clear Editor</div>
+</div>
+<div class="dropdown" id="dd-db">
+  <div class="dd-item" data-action="connect">Connect… <span class="shortcut">⌘K</span></div>
+  <div class="dd-item" data-action="disconnect">Disconnect</div>
+  <div class="dd-sep"></div>
+  <div class="dd-item" data-action="refresh">Refresh Tree <span class="shortcut">⌘R</span></div>
+  <div class="dd-item" data-action="showdbs">Show Databases</div>
+  <div class="dd-item" data-action="showtables">Show Tables</div>
+</div>
+<div class="dropdown" id="dd-help">
+  <div class="dd-item" data-action="setup">Proxy Setup Guide…</div>
+  <div class="dd-item" data-action="shortcuts">Keyboard Shortcuts</div>
+  <div class="dd-sep"></div>
+  <div class="dd-item" data-action="about">About QueryMac…</div>
+</div>
+
+<!-- ═══ APP ═══ -->
+<div id="app">
+  <div id="main-window">
+
+    <!-- title bar -->
+    <div class="titlebar" style="position:relative;">
+      <div class="wbox" id="btn-close" title="Close">&#10005;</div>
+      <div class="wbox" title="Minimize">&#8722;</div>
+      <div class="title-label" id="win-title">QueryMac — SQL IDE</div>
+      <div class="wbox zoom" title="Zoom">&#9744;</div>
+    </div>
+
+    <!-- toolbar -->
+    <div id="toolbar">
+      <button class="tbtn" id="btn-connect" title="⌘K">⬡ Connect</button>
+      <button class="tbtn run" id="btn-run" title="⌘↵">▶ Run Query</button>
+      <button class="tbtn" id="btn-explain">⊞ Explain</button>
+      <button class="tbtn" id="btn-clear">✕ Clear</button>
+      <button class="tbtn" id="btn-format">≡ Format</button>
+      <span style="width:1px;height:14px;background:#000;display:inline-block;margin:0 2px;"></span>
+      <button class="tbtn" id="btn-csv">↓ CSV</button>
+      <div id="qstatus"></div>
+    </div>
+
+    <!-- body -->
+    <div id="window-body">
+
+      <!-- sidebar -->
+      <div id="sidebar">
+        <div class="panel-head">DATABASE BROWSER</div>
+        <div id="db-tree">
+          <div class="tree-row" style="color:#999;font-size:10px;padding:6px;font-style:italic;">
+            Not connected — click Connect
+          </div>
+        </div>
+      </div>
+      <div id="sb-resize"></div>
+
+      <!-- main area -->
+      <div id="main-area">
+
+        <!-- editor -->
+        <div id="editor-pane">
+          <div class="pane-head">
+            <span>⌨ SQL EDITOR</span>
+            <span style="color:#888;font-weight:normal;font-size:9px;">⌘↵ to run &nbsp;·&nbsp; Tab = 2 spaces</span>
+          </div>
+          <div id="editor-wrap">
+            <div id="line-gutter">1</div>
+            <div id="hl-layer"></div>
+            <textarea id="sql-ta" spellcheck="false" autocomplete="off"
+              autocorrect="off" autocapitalize="off"></textarea>
+          </div>
+        </div>
+
+        <!-- vertical resize -->
+        <div id="vert-resize"></div>
+
+        <!-- results -->
+        <div id="results-pane">
+          <div class="pane-head">⊞ RESULTS</div>
+          <div id="results-body">
+            <div class="msg info">Run a query to see results here.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- status bar -->
+<div id="status-bar">
+  <span><span class="sdot" id="sdot"></span><span id="stext">Disconnected</span></span>
+  <span id="s-rows"></span>
+  <span id="s-time"></span>
+  <span id="s-brand">QueryMac v1.0 — System 1</span>
+</div>
+
+<!-- ═══ CONNECT DIALOG ═══ -->
+<div class="overlay" id="dlg-connect">
+  <div class="dialog">
+    <div class="dlg-title"><span>MySQL Connection Settings</span></div>
+    <div class="dlg-body">
+      <div class="frow"><label>Host</label><input id="f-host" value="127.0.0.1"/></div>
+      <div class="frow"><label>Port</label><input id="f-port" value="3306" class="short"/></div>
+      <div class="frow"><label>User</label><input id="f-user" value="root"/></div>
+      <div class="frow"><label>Password</label><input id="f-pass" type="password"/></div>
+      <div class="frow"><label>Database</label><input id="f-db" placeholder="(optional)"/></div>
+      <div class="frow" style="margin-top:10px;border-top:1px solid #ccc;padding-top:10px;">
+        <label>Proxy URL</label><input id="f-proxy" value="http://localhost:3000"/>
+      </div>
+      <div style="font-size:9px;color:#888;margin-top:4px;padding-left:82px;">
+        Run the companion proxy-server.js (see Help &gt; Proxy Setup Guide)
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button class="tbtn" id="dlg-cancel">Cancel</button>
+      <button class="tbtn run" id="dlg-ok">Connect</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SETUP DIALOG ═══ -->
+<div class="overlay" id="dlg-setup">
+  <div class="dialog" style="min-width:480px;">
+    <div class="dlg-title"><span>Proxy Setup Guide</span></div>
+    <div class="dlg-body">
+      <p style="font-size:11px;margin-bottom:8px;">QueryMac needs a small local proxy to reach your MySQL instance. Set it up in 3 steps:</p>
+      <p style="font-size:10px;font-weight:bold;margin-bottom:4px;">① Install Node.js dependencies (once)</p>
+      <div id="setup-code">npm install express mysql2 cors</div>
+      <p style="font-size:10px;font-weight:bold;margin:8px 0 4px;">② Run the proxy server (proxy-server.js)</p>
+      <div id="setup-code">node proxy-server.js</div>
+      <p style="font-size:10px;font-weight:bold;margin:8px 0 4px;">③ Open QueryMac.html in your browser, click Connect, enter credentials</p>
+      <p style="font-size:10px;color:#888;margin-top:8px;">The proxy-server.js file was downloaded alongside this file.</p>
+    </div>
+    <div class="dlg-foot">
+      <button class="tbtn run" id="setup-close">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ ABOUT DIALOG ═══ -->
+<div class="overlay" id="dlg-about">
+  <div class="dialog" style="min-width:260px;text-align:center;">
+    <div class="dlg-title"><span>About QueryMac</span></div>
+    <div class="dlg-body" style="text-align:center;padding:20px;">
+      <div style="font-size:32px;margin-bottom:8px;">&#63743;</div>
+      <div style="font-size:14px;font-weight:bold;margin-bottom:4px;">QueryMac</div>
+      <div style="font-size:11px;color:#555;margin-bottom:12px;">SQL IDE · System 1 Edition · v1.0</div>
+      <div style="font-size:10px;color:#888;line-height:1.6;">
+        A retro Macintosh-style SQL workbench.<br>
+        Connects to MySQL via local proxy server.<br>
+        Press ⌘↵ to run queries.
+      </div>
+    </div>
+    <div class="dlg-foot" style="justify-content:center;">
+      <button class="tbtn run" id="about-close">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SHORTCUTS DIALOG ═══ -->
+<div class="overlay" id="dlg-shortcuts">
+  <div class="dialog" style="min-width:300px;">
+    <div class="dlg-title"><span>Keyboard Shortcuts</span></div>
+    <div class="dlg-body" style="padding:12px 16px;">
+      <table style="width:100%;font-size:11px;border-collapse:collapse;">
+        <tr><td style="padding:3px 0;color:#555;">Run Query</td><td style="text-align:right;font-weight:bold;">⌘ + Enter</td></tr>
+        <tr><td style="padding:3px 0;color:#555;">Connect to DB</td><td style="text-align:right;font-weight:bold;">⌘ + K</td></tr>
+        <tr><td style="padding:3px 0;color:#555;">New Query</td><td style="text-align:right;font-weight:bold;">⌘ + N</td></tr>
+        <tr><td style="padding:3px 0;color:#555;">Format SQL</td><td style="text-align:right;font-weight:bold;">⌘ + Shift + F</td></tr>
+        <tr><td style="padding:3px 0;color:#555;">Clear Editor</td><td style="text-align:right;font-weight:bold;">⌘ + Shift + X</td></tr>
+        <tr><td style="padding:3px 0;color:#555;">Export CSV</td><td style="text-align:right;font-weight:bold;">⌘ + Shift + E</td></tr>
+        <tr><td style="padding:3px 0;color:#555;">Tab indent</td><td style="text-align:right;font-weight:bold;">Tab (2 spaces)</td></tr>
+        <tr><td style="padding:3px 0;color:#555;">Double-click table</td><td style="text-align:right;font-weight:bold;">Insert SELECT</td></tr>
+      </table>
+    </div>
+    <div class="dlg-foot">
+      <button class="tbtn run" id="shortcuts-close">OK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────
+const S = {
+  connected: false,
+  conn: null,
+  proxy: 'http://localhost:3000',
+  lastRows: null,
+  lastCols: null,
+};
+
+// ─── CLOCK ───────────────────────────────────────
+function tick(){
+  const d=new Date();
+  document.getElementById('clock').textContent=
+    d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');
+}
+tick();setInterval(tick,20000);
+
+// ─── MENU DROPDOWNS ──────────────────────────────
+const menus=[
+  {mi:'mi-file',dd:'dd-file'},
+  {mi:'mi-edit',dd:'dd-edit'},
+  {mi:'mi-query',dd:'dd-query'},
+  {mi:'mi-db',dd:'dd-db'},
+  {mi:'mi-help',dd:'dd-help'},
+];
+let openMenu=null;
+
+menus.forEach(({mi,dd})=>{
+  const miEl=document.getElementById(mi);
+  const ddEl=document.getElementById(dd);
+  miEl.addEventListener('click',e=>{
+    e.stopPropagation();
+    if(openMenu&&openMenu!==dd){
+      document.getElementById(openMenu).classList.remove('open');
+      document.querySelector('#menu-bar .open')?.classList.remove('open');
+    }
+    const isOpen=ddEl.classList.contains('open');
+    ddEl.classList.toggle('open');
+    miEl.classList.toggle('open');
+    openMenu=isOpen?null:dd;
+    if(!isOpen){
+      const rect=miEl.getBoundingClientRect();
+      ddEl.style.left=rect.left+'px';
+      ddEl.style.top='20px';
+    }
+  });
+});
+document.addEventListener('click',()=>{
+  if(openMenu){document.getElementById(openMenu).classList.remove('open');openMenu=null;}
+  document.querySelectorAll('.mi.open').forEach(el=>el.classList.remove('open'));
+});
+
+// menu actions
+document.querySelectorAll('.dd-item').forEach(el=>{
+  el.addEventListener('click',e=>{e.stopPropagation();handleAction(el.dataset.action);});
+});
+
+function handleAction(a){
+  if(openMenu){document.getElementById(openMenu).classList.remove('open');openMenu=null;}
+  document.querySelectorAll('.mi.open').forEach(el=>el.classList.remove('open'));
+  switch(a){
+    case 'connect': openDialog('dlg-connect'); break;
+    case 'disconnect': doDisconnect(); break;
+    case 'run': runQuery(); break;
+    case 'runsel': runSelection(); break;
+    case 'explain': runExplain(); break;
+    case 'clear': clearEditor(); break;
+    case 'new': clearEditor(); break;
+    case 'refresh': if(S.connected) refreshTree(); break;
+    case 'showdbs': sqlRun('SHOW DATABASES'); break;
+    case 'showtables': sqlRun('SHOW TABLES'); break;
+    case 'fmt': formatSQL(); break;
+    case 'export': exportCSV(); break;
+    case 'setup': openDialog('dlg-setup'); break;
+    case 'shortcuts': openDialog('dlg-shortcuts'); break;
+    case 'about': openDialog('dlg-about'); break;
+    case 'save': saveQuery(); break;
+    case 'open': openQuery(); break;
+    case 'undo': document.getElementById('sql-ta').focus(); document.execCommand('undo'); break;
+    case 'redo': document.getElementById('sql-ta').focus(); document.execCommand('redo'); break;
+    case 'selall': document.getElementById('sql-ta').select(); break;
+    case 'copy': document.execCommand('copy'); break;
+  }
+}
+
+// ─── DIALOGS ─────────────────────────────────────
+function openDialog(id){document.getElementById(id).classList.add('open');}
+function closeDialog(id){document.getElementById(id).classList.remove('open');}
+
+document.getElementById('dlg-cancel').onclick=()=>closeDialog('dlg-connect');
+document.getElementById('dlg-ok').onclick=()=>{closeDialog('dlg-connect');doConnect();};
+document.getElementById('setup-close').onclick=()=>closeDialog('dlg-setup');
+document.getElementById('about-close').onclick=()=>closeDialog('dlg-about');
+document.getElementById('shortcuts-close').onclick=()=>closeDialog('dlg-shortcuts');
+document.getElementById('btn-close').onclick=()=>{
+  if(confirm('Close QueryMac?'))window.close();
+};
+
+// close overlays on backdrop click
+document.querySelectorAll('.overlay').forEach(o=>{
+  o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');});
+});
+
+// ─── SYNTAX HIGHLIGHT ────────────────────────────
+const KW=new Set('SELECT FROM WHERE INSERT INTO UPDATE DELETE CREATE DROP ALTER TABLE DATABASE INDEX VIEW PROCEDURE FUNCTION TRIGGER AS ON SET VALUES JOIN LEFT RIGHT INNER OUTER FULL CROSS NATURAL UNION ALL DISTINCT ORDER BY GROUP HAVING LIMIT OFFSET AND OR NOT IN LIKE BETWEEN IS NULL TRUE FALSE ASC DESC PRIMARY KEY FOREIGN REFERENCES DEFAULT UNIQUE AUTO_INCREMENT INT VARCHAR TEXT BLOB DATE DATETIME TIMESTAMP FLOAT DOUBLE DECIMAL BOOLEAN CHAR MEDIUMINT BIGINT TINYINT SMALLINT LONGTEXT MEDIUMTEXT TINYTEXT SHOW TABLES DATABASES USE BEGIN COMMIT ROLLBACK TRANSACTION IF EXISTS CASCADE RESTRICT TRUNCATE REPLACE DESCRIBE EXPLAIN CALL GRANT REVOKE LOCK UNLOCK WITH RECURSIVE ENUM'.split(' '));
+const FN=new Set('COUNT SUM AVG MAX MIN COALESCE IFNULL NULLIF CAST CONVERT CONCAT SUBSTRING SUBSTR LENGTH LOWER UPPER TRIM REPLACE NOW CURDATE DATE_FORMAT DATEDIFF YEAR MONTH DAY RAND ROUND FLOOR CEILING CEIL ABS MOD IF CASE WHEN THEN ELSE END GROUP_CONCAT DISTINCT STR_TO_DATE UNIX_TIMESTAMP FROM_UNIXTIME FIND_IN_SET FIELD ISNULL STRCMP LPAD RPAD REPEAT REVERSE SPACE MD5 SHA1 AES_ENCRYPT AES_DECRYPT'.split(' '));
+
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function hlLine(ln){
+  let out='',i=0,c;
+  while(i<ln.length){
+    c=ln[i];
+    if(c==='-'&&ln[i+1]==='-'){
+      return out+`<span class="cmt">${esc(ln.slice(i))}</span>`;
+    }
+    if(c==='/'&&ln[i+1]==='*'){
+      const e2=ln.indexOf('*/',i+2);const end=e2<0?ln.length:e2+2;
+      out+=`<span class="cmt">${esc(ln.slice(i,end))}</span>`;i=end;continue;
+    }
+    if(c==="'"||c==='"'){
+      let j=i+1;
+      while(j<ln.length&&ln[j]!==c){if(ln[j]==='\\')j++;j++;}j++;
+      out+=`<span class="str">${esc(ln.slice(i,j))}</span>`;i=j;continue;
+    }
+    if(c==='`'){
+      let j=ln.indexOf('`',i+1);j=j<0?ln.length:j+1;
+      out+=`<span class="ident">${esc(ln.slice(i,j))}</span>`;i=j;continue;
+    }
+    if(/[0-9]/.test(c)&&(i===0||/\W/.test(ln[i-1]))){
+      let j=i;while(j<ln.length&&/[0-9.xXa-fA-F_]/.test(ln[j]))j++;
+      out+=`<span class="num">${esc(ln.slice(i,j))}</span>`;i=j;continue;
+    }
+    if(/[a-zA-Z_]/.test(c)){
+      let j=i;while(j<ln.length&&/[a-zA-Z0-9_]/.test(ln[j]))j++;
+      const w=ln.slice(i,j),wu=w.toUpperCase();
+      if(KW.has(wu))out+=`<span class="kw">${esc(w)}</span>`;
+      else if(FN.has(wu))out+=`<span class="fn">${esc(w)}</span>`;
+      else out+=esc(w);
+      i=j;continue;
+    }
+    if(/[=<>!]/.test(c)){out+=`<span class="op">${esc(c)}</span>`;i++;continue;}
+    out+=esc(c);i++;
+  }
+  return out;
+}
+
+function syncHL(){
+  const ta=document.getElementById('sql-ta');
+  const val=ta.value;
+  const lines=val.split('\n');
+  document.getElementById('hl-layer').innerHTML=lines.map(hlLine).join('\n');
+  document.getElementById('line-gutter').textContent=lines.map((_,i)=>i+1).join('\n');
+}
+
+const ta=document.getElementById('sql-ta');
+ta.addEventListener('input',syncHL);
+ta.addEventListener('scroll',()=>{
+  const hl=document.getElementById('hl-layer');
+  const gutter=document.getElementById('line-gutter');
+  hl.scrollTop=ta.scrollTop;hl.scrollLeft=ta.scrollLeft;
+  gutter.scrollTop=ta.scrollTop;
+});
+ta.addEventListener('keydown',e=>{
+  if(e.key==='Tab'){
+    e.preventDefault();
+    const s=ta.selectionStart,end=ta.selectionEnd;
+    ta.value=ta.value.slice(0,s)+'  '+ta.value.slice(end);
+    ta.selectionStart=ta.selectionEnd=s+2;syncHL();
+  }
+  if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();runQuery();}
+  if(e.key==='k'&&(e.ctrlKey||e.metaKey)){e.preventDefault();openDialog('dlg-connect');}
+  if(e.key==='n'&&(e.ctrlKey||e.metaKey)){e.preventDefault();clearEditor();}
+  if(e.key==='F'&&(e.ctrlKey||e.metaKey)&&e.shiftKey){e.preventDefault();formatSQL();}
+  if(e.key==='X'&&(e.ctrlKey||e.metaKey)&&e.shiftKey){e.preventDefault();clearEditor();}
+  if(e.key==='E'&&(e.ctrlKey||e.metaKey)&&e.shiftKey){e.preventDefault();exportCSV();}
+  if(e.key==='r'&&(e.ctrlKey||e.metaKey)){e.preventDefault();if(S.connected)refreshTree();}
+});
+
+// ─── RESIZE HANDLES ──────────────────────────────
+(function(){
+  const handle=document.getElementById('vert-resize');
+  const ep=document.getElementById('editor-pane');
+  let dragging=false,sy=0,sh=0;
+  handle.addEventListener('mousedown',e=>{dragging=true;sy=e.clientY;sh=ep.getBoundingClientRect().height;e.preventDefault();document.body.style.cursor='ns-resize';});
+  document.addEventListener('mousemove',e=>{if(!dragging)return;const d=e.clientY-sy;ep.style.height=Math.max(60,sh+d)+'px';ep.style.flex='none';ep.style.maxHeight='none';});
+  document.addEventListener('mouseup',()=>{dragging=false;document.body.style.cursor='';});
+})();
+
+(function(){
+  const handle=document.getElementById('sb-resize');
+  const sb=document.getElementById('sidebar');
+  let dragging=false,sx=0,sw=0;
+  handle.addEventListener('mousedown',e=>{dragging=true;sx=e.clientX;sw=sb.getBoundingClientRect().width;e.preventDefault();document.body.style.cursor='ew-resize';});
+  document.addEventListener('mousemove',e=>{if(!dragging)return;sb.style.width=Math.max(100,Math.min(400,sw+e.clientX-sx))+'px';});
+  document.addEventListener('mouseup',()=>{dragging=false;document.body.style.cursor='';});
+})();
+
+// ─── API ─────────────────────────────────────────
+async function apiCall(sql){
+  const body={sql,...S.conn};
+  const r=await fetch(S.proxy+'/query',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  });
+  return r.json();
+}
+
+// ─── CONNECTION ───────────────────────────────────
+async function doConnect(){
+  S.conn={
+    host:document.getElementById('f-host').value,
+    port:parseInt(document.getElementById('f-port').value)||3306,
+    user:document.getElementById('f-user').value,
+    password:document.getElementById('f-pass').value,
+    database:document.getElementById('f-db').value||null,
+  };
+  S.proxy=document.getElementById('f-proxy').value.replace(/\/$/,'');
+  setStatus('Connecting…',false);
+  document.getElementById('qstatus').textContent='Connecting…';
+  try{
+    const r=await apiCall('SHOW DATABASES');
+    if(r.error)throw new Error(r.error);
+    S.connected=true;
+    const label=S.conn.user+'@'+S.conn.host+(S.conn.database?'/'+S.conn.database:'');
+    setStatus(label,true);
+    document.getElementById('win-title').textContent='QueryMac — '+label;
+    document.getElementById('qstatus').textContent='';
+    showMsg('Connected successfully.','ok');
+    buildTree(r.rows||[]);
+  }catch(e){
+    setStatus('Connection failed',false);
+    document.getElementById('qstatus').textContent='Error';
+    showMsg('Connection error: '+e.message+'\n\nMake sure proxy-server.js is running (see Help › Proxy Setup Guide).','err');
+  }
+}
+
+function doDisconnect(){
+  S.connected=false;S.conn=null;
+  setStatus('Disconnected',false);
+  document.getElementById('win-title').textContent='QueryMac — SQL IDE';
+  document.getElementById('db-tree').innerHTML='<div class="tree-row" style="color:#999;font-size:10px;padding:6px;font-style:italic;">Not connected</div>';
+  showMsg('Disconnected.','info');
+}
+
+// ─── TREE ─────────────────────────────────────────
+function buildTree(rows){
+  const tree=document.getElementById('db-tree');
+  tree.innerHTML='';
+  const dbs=rows.map(r=>Object.values(r)[0]).filter(Boolean);
+  dbs.forEach(db=>{
+    const wrap=document.createElement('div');
+    wrap.className='tree-db';
+    const row=document.createElement('div');
+    row.className='tree-row'+(db===S.conn?.database?' sel':'');
+    row.innerHTML=`<span class="toggler">▶</span><span>🗄 ${esc(db)}</span>`;
+    const sub=document.createElement('div');
+    sub.style.display='none';
+    row.addEventListener('click',async()=>{
+      const open=sub.style.display==='block';
+      sub.style.display=open?'none':'block';
+      row.querySelector('.toggler').textContent=open?'▶':'▼';
+      if(!open&&!sub.dataset.loaded){
+        sub.dataset.loaded='1';
+        try{
+          const r=await apiCall(`SHOW TABLES FROM \`${db}\``);
+          if(r.rows){r.rows.forEach(ro=>{
+            const tbl=Object.values(ro)[0];
+            const tr=document.createElement('div');
+            tr.className='tree-row tbl-row';
+            tr.textContent='⊞ '+tbl;
+            tr.addEventListener('dblclick',()=>{
+              const sel=`SELECT * FROM \`${db}\`.\`${tbl}\` LIMIT 100;`;
+              ta.value=(ta.value?ta.value+'\n\n':'')+sel;syncHL();ta.focus();
+            });
+            tr.addEventListener('click',()=>{
+              document.querySelectorAll('.tree-row').forEach(x=>x.classList.remove('sel'));
+              tr.classList.add('sel');
+            });
+            sub.appendChild(tr);
+          });}
+        }catch(e){}
+      }
+    });
+    wrap.appendChild(row);wrap.appendChild(sub);
+    tree.appendChild(wrap);
+  });
+}
+
+async function refreshTree(){
+  try{const r=await apiCall('SHOW DATABASES');if(r.rows)buildTree(r.rows);}catch(e){}
+}
+
+// ─── QUERY RUN ────────────────────────────────────
+async function sqlRun(sql){
+  if(!S.connected){showMsg('Not connected.','err');return;}
+  const t0=performance.now();
+  try{
+    const r=await apiCall(sql);
+    const ms=((performance.now()-t0)/1000).toFixed(3);
+    if(r.error){showMsg('SQL Error: '+r.error,'err');setQStatus('Error');return;}
+    if(r.rows&&r.rows.length>0){
+      renderTable(r.rows);
+      document.getElementById('s-rows').textContent=r.rows.length+' row'+(r.rows.length!==1?'s':'');
+    }else if(r.affectedRows!=null){
+      showMsg('Query OK — '+r.affectedRows+' row(s) affected.','ok');
+      document.getElementById('s-rows').textContent=r.affectedRows+' affected';
+      if(/^(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TRUNCATE)/i.test(sql.trim()))refreshTree();
+    }else{showMsg('Query returned no rows.','info');}
+    document.getElementById('s-time').textContent=ms+'s';
+    setQStatus(ms+'s');
+  }catch(e){showMsg('Network error: '+e.message,'err');setQStatus('Error');}
+}
+
+function runQuery(){
+  const sql=ta.value.trim();
+  if(!sql){showMsg('Editor is empty.','info');return;}
+  sqlRun(sql);
+}
+
+function runSelection(){
+  const start=ta.selectionStart,end=ta.selectionEnd;
+  const sel=ta.value.slice(start,end).trim();
+  if(sel)sqlRun(sel);else runQuery();
+}
+
+function runExplain(){
+  const sql=ta.value.trim();
+  if(sql)sqlRun('EXPLAIN '+sql);
+}
+
+// ─── RENDER ───────────────────────────────────────
+function renderTable(rows){
+  const cols=Object.keys(rows[0]);
+  S.lastRows=rows;S.lastCols=cols;
+  let h=`<table class="rtable"><thead><tr>`;
+  cols.forEach(c=>{h+=`<th>${esc(String(c))}</th>`;});
+  h+=`</tr></thead><tbody>`;
+  rows.forEach(row=>{
+    h+='<tr>';
+    cols.forEach(c=>{
+      const v=row[c];
+      h+=`<td>${v===null?'<span class="null">NULL</span>':esc(String(v))}</td>`;
+    });
+    h+='</tr>';
+  });
+  h+='</tbody></table>';
+  document.getElementById('results-body').innerHTML=h;
+}
+
+function showMsg(msg,type){
+  document.getElementById('results-body').innerHTML=
+    `<div class="msg ${type}">${esc(msg).replace(/\n/g,'<br>')}</div>`;
+}
+
+function setStatus(t,on){
+  document.getElementById('sdot').className='sdot'+(on?' on':'');
+  document.getElementById('stext').textContent=t;
+}
+function setQStatus(t){document.getElementById('qstatus').textContent=t;}
+
+// ─── EDITOR UTILITIES ─────────────────────────────
+function clearEditor(){
+  ta.value='';syncHL();
+  showMsg('Editor cleared. Ready.','info');
+  document.getElementById('s-rows').textContent='';
+  document.getElementById('s-time').textContent='';
+  setQStatus('');
+}
+
+function formatSQL(){
+  let sql=ta.value;
+  const mainKw=['SELECT','FROM','WHERE','GROUP BY','ORDER BY','HAVING','LIMIT','OFFSET','JOIN','LEFT JOIN','RIGHT JOIN','INNER JOIN','UNION','INSERT INTO','VALUES','UPDATE','SET','DELETE FROM','CREATE TABLE','ALTER TABLE','DROP TABLE'];
+  mainKw.forEach(k=>{
+    sql=sql.replace(new RegExp('\\b'+k+'\\b','gi'),'\n'+k);
+  });
+  sql=sql.replace(/,\s*/g,',\n  ').replace(/\n\n+/g,'\n').trim();
+  ta.value=sql;syncHL();
+}
+
+function exportCSV(){
+  if(!S.lastRows||!S.lastCols){showMsg('No results to export.','info');return;}
+  const lines=[S.lastCols.map(c=>JSON.stringify(c)).join(',')];
+  S.lastRows.forEach(r=>{
+    lines.push(S.lastCols.map(c=>{
+      const v=r[c];return v===null?'NULL':JSON.stringify(String(v));
+    }).join(','));
+  });
+  const blob=new Blob([lines.join('\n')],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='query_results.csv';a.click();
+}
+
+function saveQuery(){
+  const blob=new Blob([ta.value],{type:'text/sql'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);a.download='query.sql';a.click();
+}
+
+function openQuery(){
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='.sql,.txt';
+  inp.onchange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{ta.value=ev.target.result;syncHL();};
+    reader.readAsText(f);
+  };
+  inp.click();
+}
+
+// ─── TOOLBAR BUTTONS ──────────────────────────────
+document.getElementById('btn-connect').onclick=()=>openDialog('dlg-connect');
+document.getElementById('btn-run').onclick=runQuery;
+document.getElementById('btn-explain').onclick=runExplain;
+document.getElementById('btn-clear').onclick=clearEditor;
+document.getElementById('btn-format').onclick=formatSQL;
+document.getElementById('btn-csv').onclick=exportCSV;
+
+// ─── INITIAL STATE ────────────────────────────────
+ta.value=`-- ═══════════════════════════════════════
+--  QueryMac  ·  System 1 SQL IDE
+--  ⌘↵ to run  ·  ⌘K to connect
+-- ═══════════════════════════════════════
+
+SELECT
+  table_name,
+  table_rows,
+  data_length,
+  index_length
+FROM
+  information_schema.tables
+WHERE
+  table_schema = DATABASE()
+ORDER BY
+  data_length DESC
+LIMIT 20;`;
+syncHL();
+</script>
+</body>
+</html>

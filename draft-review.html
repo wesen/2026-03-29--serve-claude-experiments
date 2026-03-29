@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DraftDesk — Article Review System</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Chicago:wght@400&display=swap');
+
+  :root {
+    --black: #000000;
+    --white: #FFFFFF;
+    --gray-light: #DDDDDD;
+    --gray-mid: #AAAAAA;
+    --gray-dark: #555555;
+    --window-bg: #FFFFFF;
+    --desktop-bg: #AAAAAA;
+    --title-bar-h: 22px;
+    --border: 2px solid #000;
+    --shadow: 4px 4px 0px #000;
+    --shadow-sm: 2px 2px 0px #000;
+    --reaction-useful: #000;
+    --reaction-confusing: #000;
+    --reaction-slow: #000;
+    --reaction-love: #000;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Geneva', 'Chicago', 'Monaco', monospace;
+    font-size: 12px;
+    background-color: var(--desktop-bg);
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 1px,
+        rgba(0,0,0,0.03) 1px,
+        rgba(0,0,0,0.03) 2px
+      );
+    min-height: 100vh;
+    overflow: hidden;
+    cursor: default;
+    user-select: none;
+  }
+
+  /* ─── MENU BAR ─── */
+  #menubar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 20px;
+    background: white;
+    border-bottom: 1px solid black;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    gap: 16px;
+    z-index: 9999;
+    font-weight: bold;
+    font-size: 12px;
+  }
+  #menubar .apple {
+    font-size: 14px;
+    margin-right: 4px;
+  }
+  .menu-item {
+    padding: 0 6px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    border-radius: 2px;
+  }
+  .menu-item:hover {
+    background: black;
+    color: white;
+  }
+  #menubar .right {
+    margin-left: auto;
+    font-weight: normal;
+    font-size: 11px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  #clock { font-size: 11px; }
+
+  /* ─── DESKTOP ─── */
+  #desktop {
+    position: fixed;
+    top: 20px; left: 0; right: 0; bottom: 0;
+    overflow: hidden;
+  }
+
+  /* ─── WINDOW BASE ─── */
+  .window {
+    position: absolute;
+    background: var(--window-bg);
+    border: var(--border);
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    min-width: 200px;
+  }
+
+  .title-bar {
+    height: var(--title-bar-h);
+    background: white;
+    border-bottom: 2px solid black;
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    gap: 4px;
+    cursor: move;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .title-bar .close-box {
+    width: 12px;
+    height: 12px;
+    border: 1.5px solid black;
+    background: white;
+    flex-shrink: 0;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8px;
+  }
+  .title-bar .close-box:hover { background: black; color: white; }
+  .title-bar .title-text {
+    flex: 1;
+    text-align: center;
+    font-weight: bold;
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .title-bar .resize-handle {
+    width: 12px; height: 12px;
+    border: 1.5px solid black;
+    background: white;
+    flex-shrink: 0;
+  }
+
+  /* ─── SCROLLBAR ─── */
+  ::-webkit-scrollbar { width: 14px; height: 14px; }
+  ::-webkit-scrollbar-track { background: var(--white); border-left: 2px solid black; }
+  ::-webkit-scrollbar-thumb {
+    background:
+      repeating-linear-gradient(
+        45deg,
+        black 0, black 1px,
+        white 0, white 50%
+      );
+    background-size: 4px 4px;
+    border: 2px solid black;
+  }
+  ::-webkit-scrollbar-button { display: none; }
+
+  /* ─── BUTTONS ─── */
+  .btn {
+    border: 2px solid black;
+    background: white;
+    padding: 3px 10px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: bold;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  .btn:hover { background: #eee; }
+  .btn:active { background: black; color: white; transform: translate(1px,1px); }
+  .btn.primary {
+    background: black;
+    color: white;
+  }
+  .btn.primary:hover { background: #333; }
+  .btn.primary:active { background: #555; }
+
+  /* ─── REACTION TAGS ─── */
+  .reaction-btn {
+    border: 2px solid black;
+    background: white;
+    padding: 2px 7px;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: bold;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .reaction-btn:hover { background: #eee; }
+  .reaction-btn.active { background: black; color: white; }
+  .reaction-btn[data-type="useful"].active { background: #000; }
+  .reaction-btn[data-type="confusing"].active { background: #222; }
+  .reaction-btn[data-type="slow"].active { background: #444; }
+  .reaction-btn[data-type="love"].active { background: #000; }
+
+  /* ─── DRAFT ARTICLE WINDOW ─── */
+  #draft-window {
+    top: 30px; left: 20px;
+    width: 520px;
+    height: calc(100vh - 80px);
+    z-index: 10;
+  }
+  #draft-content {
+    overflow-y: scroll;
+    flex: 1;
+    padding: 20px 24px;
+    line-height: 1.75;
+    font-family: 'Georgia', serif;
+    font-size: 13px;
+    user-select: text;
+    position: relative;
+  }
+  #draft-content h1 {
+    font-family: inherit;
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 12px;
+    border-bottom: 2px solid black;
+    padding-bottom: 8px;
+  }
+  #draft-content h2 {
+    font-size: 15px;
+    font-weight: bold;
+    margin: 18px 0 8px;
+    font-family: inherit;
+  }
+  #draft-content p {
+    margin-bottom: 12px;
+  }
+  #draft-content .draft-badge {
+    display: inline-block;
+    border: 2px solid black;
+    padding: 2px 8px;
+    font-family: monospace;
+    font-size: 10px;
+    font-weight: bold;
+    margin-bottom: 16px;
+    background: black;
+    color: white;
+    letter-spacing: 0.1em;
+  }
+
+  /* Paragraph highlights */
+  .para-wrap {
+    position: relative;
+    padding-left: 0;
+    transition: background 0.1s;
+    border-left: 3px solid transparent;
+    padding-left: 8px;
+    margin-left: -11px;
+  }
+  .para-wrap:hover {
+    border-left-color: black;
+    background: rgba(0,0,0,0.04);
+  }
+  .para-wrap .para-actions {
+    position: absolute;
+    right: -100px;
+    top: 0;
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+    width: 90px;
+  }
+  .para-wrap:hover .para-actions { display: flex; }
+
+  .reaction-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    border: 1.5px solid black;
+    padding: 1px 5px;
+    font-family: monospace;
+    font-size: 9px;
+    font-weight: bold;
+    background: white;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .reaction-chip:hover { background: black; color: white; }
+
+  /* Annotations in margin */
+  .has-comment { border-left-color: black !important; background: rgba(0,0,0,0.06) !important; }
+
+  /* ─── FEEDBACK PANEL ─── */
+  #feedback-window {
+    top: 30px; right: 20px;
+    width: 340px;
+    height: calc(100vh - 80px);
+    z-index: 10;
+  }
+  #feedback-inner {
+    flex: 1;
+    overflow-y: scroll;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    border-bottom: 2px solid black;
+    flex-shrink: 0;
+  }
+  .tab {
+    flex: 1;
+    padding: 4px 6px;
+    text-align: center;
+    font-size: 10px;
+    font-weight: bold;
+    cursor: pointer;
+    border-right: 2px solid black;
+    background: #ddd;
+    font-family: monospace;
+  }
+  .tab:last-child { border-right: none; }
+  .tab.active { background: white; }
+  .tab:hover:not(.active) { background: #ccc; }
+
+  .tab-panel { display: none; flex-direction: column; flex: 1; }
+  .tab-panel.active { display: flex; flex-direction: column; flex: 1; }
+
+  /* Readers list */
+  .reader-card {
+    border-bottom: 1px solid #ccc;
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .reader-avatar {
+    width: 24px; height: 24px;
+    border: 2px solid black;
+    background: black;
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    font-weight: bold;
+    flex-shrink: 0;
+  }
+  .reader-info { flex: 1; }
+  .reader-name { font-weight: bold; font-size: 11px; }
+  .reader-meta { font-size: 10px; color: #555; margin-top: 1px; }
+  .reader-progress { font-size: 10px; margin-top: 3px; }
+  .progress-bar {
+    height: 8px;
+    background: #ddd;
+    border: 1px solid black;
+    margin-top: 2px;
+    position: relative;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: repeating-linear-gradient(
+      45deg,
+      black 0, black 2px,
+      transparent 0, transparent 4px
+    );
+    transition: width 0.3s;
+  }
+
+  /* Comments */
+  .comment-card {
+    border-bottom: 2px solid #ccc;
+    padding: 10px 10px;
+  }
+  .comment-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 5px;
+  }
+  .comment-avatar {
+    width: 18px; height: 18px;
+    border: 1.5px solid black;
+    background: black;
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8px;
+    font-weight: bold;
+    flex-shrink: 0;
+  }
+  .comment-meta { font-size: 10px; color: #555; }
+  .comment-name { font-weight: bold; color: black; }
+  .comment-tag {
+    display: inline-block;
+    border: 1.5px solid black;
+    padding: 0px 5px;
+    font-size: 9px;
+    font-weight: bold;
+    font-family: monospace;
+    margin-left: auto;
+  }
+  .tag-useful { background: black; color: white; }
+  .tag-confusing { background: #555; color: white; }
+  .tag-slow { background: #aaa; color: black; }
+  .tag-love { background: black; color: white; }
+  .comment-excerpt {
+    font-size: 10px;
+    color: #555;
+    font-style: italic;
+    border-left: 2px solid #aaa;
+    padding-left: 6px;
+    margin-bottom: 5px;
+  }
+  .comment-text {
+    font-size: 11px;
+    line-height: 1.5;
+    font-family: 'Georgia', serif;
+  }
+  .comment-section-label {
+    font-size: 10px;
+    font-weight: bold;
+    padding: 4px 10px;
+    background: #eee;
+    border-bottom: 1px solid #ccc;
+    border-top: 1px solid #ccc;
+    font-family: monospace;
+  }
+
+  /* Stats */
+  .stats-panel {
+    padding: 10px;
+    flex: 1;
+    overflow-y: auto;
+  }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    border-bottom: 1px solid #eee;
+    font-size: 11px;
+  }
+  .stat-num {
+    font-weight: bold;
+    font-size: 16px;
+    font-family: monospace;
+  }
+  .stat-label { color: #444; }
+  .chart-wrap {
+    margin-top: 12px;
+    border: 2px solid black;
+    padding: 8px;
+    background: white;
+  }
+  .chart-title { font-size: 10px; font-weight: bold; margin-bottom: 6px; font-family: monospace; }
+  .chart-bars { display: flex; align-items: flex-end; gap: 4px; height: 60px; }
+  .chart-bar-wrap { display: flex; flex-direction: column; align-items: center; flex: 1; height: 100%; justify-content: flex-end; }
+  .chart-bar {
+    width: 100%;
+    background: repeating-linear-gradient(
+      -45deg,
+      black 0, black 2px,
+      white 0, white 5px
+    );
+    border: 1.5px solid black;
+    transition: height 0.4s ease;
+  }
+  .chart-label { font-size: 8px; margin-top: 3px; font-family: monospace; }
+
+  /* Invite panel */
+  .invite-form {
+    padding: 12px;
+    flex: 1;
+    overflow-y: auto;
+  }
+  .form-group { margin-bottom: 10px; }
+  .form-label { display: block; font-weight: bold; font-size: 10px; margin-bottom: 3px; font-family: monospace; }
+  .form-input {
+    width: 100%;
+    border: 2px solid black;
+    padding: 4px 6px;
+    font-family: inherit;
+    font-size: 11px;
+    background: white;
+    outline: none;
+  }
+  .form-input:focus { background: #f5f5f5; }
+  textarea.form-input { resize: vertical; min-height: 70px; }
+  .form-select {
+    width: 100%;
+    border: 2px solid black;
+    padding: 4px 6px;
+    font-family: inherit;
+    font-size: 11px;
+    background: white;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    cursor: pointer;
+  }
+  .invite-link-box {
+    border: 2px solid black;
+    padding: 6px 8px;
+    background: #eee;
+    font-family: monospace;
+    font-size: 10px;
+    word-break: break-all;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  /* ─── REACTION MODAL ─── */
+  #reaction-modal {
+    display: none;
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border: 3px solid black;
+    box-shadow: 6px 6px 0 black;
+    width: 360px;
+    z-index: 9000;
+  }
+  #reaction-modal .modal-body {
+    padding: 14px;
+  }
+  .modal-label { font-size: 10px; font-weight: bold; margin-bottom: 5px; font-family: monospace; }
+  .reaction-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .reaction-grid .reaction-btn {
+    padding: 6px 8px;
+    justify-content: flex-start;
+    font-size: 11px;
+  }
+  #reaction-excerpt {
+    border: 2px solid #aaa;
+    background: #f5f5f5;
+    padding: 6px 8px;
+    font-size: 10px;
+    font-style: italic;
+    color: #555;
+    margin-bottom: 10px;
+    max-height: 50px;
+    overflow: hidden;
+    font-family: Georgia, serif;
+  }
+  #reaction-comment {
+    width: 100%;
+    border: 2px solid black;
+    padding: 5px 7px;
+    font-family: Georgia, serif;
+    font-size: 11px;
+    resize: vertical;
+    min-height: 60px;
+    outline: none;
+    margin-bottom: 10px;
+  }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 6px; }
+
+  /* ─── OVERLAY ─── */
+  #overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 8000;
+  }
+
+  /* ─── INVITE SUCCESS ─── */
+  #invite-toast {
+    display: none;
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: black;
+    color: white;
+    padding: 8px 16px;
+    border: 2px solid white;
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: bold;
+    z-index: 9999;
+    letter-spacing: 0.05em;
+  }
+
+  /* ─── SCROLLBAR ARROWS ─── */
+  .scroll-container {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ─── STATUS BAR ─── */
+  .status-bar {
+    border-top: 2px solid black;
+    padding: 2px 8px;
+    font-size: 10px;
+    color: #555;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    font-family: monospace;
+    background: #f0f0f0;
+  }
+
+  /* Tooltips */
+  [title] { cursor: help; }
+
+  /* Section headers in draft */
+  .section-divider {
+    text-align: center;
+    margin: 16px 0;
+    position: relative;
+    font-size: 10px;
+    font-family: monospace;
+    font-weight: bold;
+    color: #888;
+    letter-spacing: 0.1em;
+  }
+  .section-divider::before, .section-divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 30%;
+    height: 1px;
+    background: #ccc;
+  }
+  .section-divider::before { left: 0; }
+  .section-divider::after { right: 0; }
+
+  /* Comment count badge on paragraphs */
+  .comment-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px; height: 16px;
+    background: black;
+    color: white;
+    font-size: 8px;
+    font-weight: bold;
+    font-family: monospace;
+    vertical-align: middle;
+    margin-left: 4px;
+    border-radius: 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- MENU BAR -->
+<div id="menubar">
+  <span class="apple">✦</span>
+  <span class="menu-item" style="font-weight:bold">DraftDesk</span>
+  <span class="menu-item">File</span>
+  <span class="menu-item">Edit</span>
+  <span class="menu-item">View</span>
+  <span class="menu-item">Readers</span>
+  <span class="menu-item">Help</span>
+  <div class="right">
+    <span>DRAFT v3</span>
+    <span id="clock">--:--</span>
+  </div>
+</div>
+
+<div id="desktop">
+
+  <!-- DRAFT WINDOW -->
+  <div class="window" id="draft-window">
+    <div class="title-bar" id="draft-title-bar">
+      <div class="close-box" onclick="closeWindow('draft-window')">✕</div>
+      <div class="title-text">📄 Article Draft — "The Attention Economy"</div>
+      <div class="resize-handle"></div>
+    </div>
+    <div class="scroll-container">
+      <div id="draft-content">
+        <div class="draft-badge">DRAFT · v3 · REVIEW OPEN</div>
+        <div class="para-wrap" data-para="0">
+          <h1>The Attention Economy Is Eating Your Brain</h1>
+          <div class="para-actions">
+            <span class="reaction-chip" onclick="openReaction(0,'useful','')">✓ Useful</span>
+            <span class="reaction-chip" onclick="openReaction(0,'confusing','')">? Confusing</span>
+            <span class="reaction-chip" onclick="openReaction(0,'slow','')">⊘ Slow</span>
+            <span class="reaction-chip" onclick="openReaction(0,'love','')">♥ Love</span>
+          </div>
+        </div>
+
+        <div class="section-divider">§ INTRODUCTION</div>
+
+        <div class="para-wrap has-comment" data-para="1">
+          <p>Every morning, before your feet hit the floor, the algorithm already knows what you want. It knows you better than your mother, better than your therapist, and infinitely better than the version of yourself that went to sleep eight hours ago. The attention economy doesn't just compete for your time — it is actively reshaping the architecture of your mind.<span class="comment-badge">2</span></p>
+          <div class="para-actions">
+            <span class="reaction-chip" onclick="openReaction(1,'useful','Every morning, before your feet hit the floor...')">✓ Useful</span>
+            <span class="reaction-chip" onclick="openReaction(1,'confusing','Every morning, before your feet hit the floor...')">? Confusing</span>
+            <span class="reaction-chip" onclick="openReaction(1,'slow','Every morning, before your feet hit the floor...')">⊘ Slow</span>
+            <span class="reaction-chip" onclick="openReaction(1,'love','Every morning, before your feet hit the floor...')">♥ Love</span>
+          </div>
+        </div>
+
+        <div class="para-wrap" data-para="2">
+          <p>In 2004, the average human attention span was estimated at twelve seconds. By 2024, it had dropped to eight — below that of a goldfish. While that statistic may be apocryphal, the underlying truth is not: something has fundamentally changed about how we process information, prioritize tasks, and engage with the world around us.</p>
+          <div class="para-actions">
+            <span class="reaction-chip" onclick="openReaction(2,'useful','In 2004, the average human attention span...')">✓ Useful</span>
+            <span class="reaction-chip" onclick="openReaction(2,'confusing','In 2004, the average human attention span...')">? Confusing</span>
+            <span class="reaction-chip" onclick="openReaction(2,'slow','In 2004, the average human attention span...')">⊘ Slow</span>
+            <span class="reaction-chip" onclick="openReaction(2,'love','In 2004, the average human attention span...')">♥ Love</span>
+          </div>
+        </div>
+
+        <div class="section-divider">§ THE MECHANICS</div>
+
+        <div class="para-wrap" data-para="3">
+          <h2>How Platforms Harvest Focus</h2>
+        </div>
+
+        <div class="para-wrap has-comment" data-para="4">
+          <p>The mechanism is deceptively simple: variable reward schedules. Psychologist B.F. Skinner discovered in the 1950s that animals — and humans — become most obsessively engaged when rewards are unpredictable. Pull the lever, sometimes you get food, sometimes nothing. This is precisely how infinite scroll works. The next post might be boring. Or it might be the most satisfying thing you've seen all week. You never know, so you never stop.<span class="comment-badge">1</span></p>
+          <div class="para-actions">
+            <span class="reaction-chip" onclick="openReaction(4,'useful','The mechanism is deceptively simple...')">✓ Useful</span>
+            <span class="reaction-chip" onclick="openReaction(4,'confusing','The mechanism is deceptively simple...')">? Confusing</span>
+            <span class="reaction-chip" onclick="openReaction(4,'slow','The mechanism is deceptively simple...')">⊘ Slow</span>
+            <span class="reaction-chip" onclick="openReaction(4,'love','The mechanism is deceptively simple...')">♥ Love</span>
+          </div>
+        </div>
+
+        <div class="para-wrap" data-para="5">
+          <p>This is not an accident. The product managers, behavioral scientists, and machine learning engineers who design these systems know exactly what they're doing. Sean Parker, a co-founder of Facebook, said in 2017 that the platform was designed to exploit "a vulnerability in human psychology." He described it as a "social-validation feedback loop" — and he seemed proud of it.</p>
+          <div class="para-actions">
+            <span class="reaction-chip" onclick="openReaction(5,'useful','This is not an accident...')">✓ Useful</span>
+            <span class="reaction-chip" onclick="openReaction(5,'confusing','This is not an accident...')">? Confusing</span>
+            <span class="reaction-chip" onclick="openReaction(5,'slow','This is not an accident...')">⊘ Slow</span>
+            <span class="reaction-chip" onclick="openReaction(5,'love','This is not an accident...')">♥ Love</span>
+          </div>
+        </div>
+
+        <div class="para-wrap" data-para="6">
+          <p>The result: by one measure, the average American now checks their phone 96 times a day. Every unlock is a tiny bet against yourself — a gamble that the next notification will be the one that finally satisfies the itch. It rarely is. The itch just gets worse.</p>
+          <div class="para-actions">
+            <span class="reaction-chip" onclick="openReaction(6,'useful','The result: by one measure...')">✓ Useful</span>
+            <span class="reaction-chip" onclick="openReaction(6,'confusing','The result: by one measure...')">? Confusing</span>
+            <span class="reaction-chip" onclick="openReaction(6,'slow','The result: by one measure...')">⊘ Slow</span>
+            <span class="reaction-chip" onclick="openReaction(6,'love','The result: by one measure...')">♥ Love</span>
+          </div>
+        </div>
+
+        <div class="section-divider">§ CONSEQUENCES</div>
+
+        <div class="para-wrap" data-para="7">
+          <h2>What We Lose</h2>
+        </div>
+
+        <div class="para-wrap" data-para="8">
+          <p>The costs are not merely productivity metrics. Deep focus — the kind that produces original thought, empathy, and creativity — requires sustained uninterrupted attention. Cal Newport calls it "deep work." Mihaly Csikszentmihalyi called it "flow." The research is consistent: we do our most meaningful cognitive and emotional work in states of extended concentration that the attention economy is systematically destroying.</p>
+          <div class="para-actions">
+            <span class="reaction-chip" onclick="openReaction(8,'useful','The costs are not merely productivity metrics...')">✓ Useful</span>
+            <span class="reaction-chip" onclick="openReaction(8,'confusing','The costs are not merely productivity metrics...')">? Confusing</span>
+            <span class="reaction-chip" onclick="openReaction(8,'slow','The costs are not merely productivity metrics...')">⊘ Slow</span>
+            <span class="reaction-chip" onclick="openReaction(8,'love','The costs are not merely productivity metrics...')">♥ Love</span>
+          </div>
+        </div>
+
+        <div class="para-wrap" data-para="9">
+          <p>There is also a democratic cost. A population that cannot read a long article, follow a complex argument, or sit with ambiguity for more than a few seconds is a population that is easier to manipulate. Outrage is simple. Nuance is hard. The algorithm has no incentive to teach nuance.</p>
+          <div class="para-actions">
+            <span class="reaction-chip" onclick="openReaction(9,'useful','There is also a democratic cost...')">✓ Useful</span>
+            <span class="reaction-chip" onclick="openReaction(9,'confusing','There is also a democratic cost...')">? Confusing</span>
+            <span class="reaction-chip" onclick="openReaction(9,'slow','There is also a democratic cost...')">⊘ Slow</span>
+            <span class="reaction-chip" onclick="openReaction(9,'love','There is also a democratic cost...')">♥ Love</span>
+          </div>
+        </div>
+
+        <div class="section-divider">§ WHAT NOW?</div>
+
+        <div class="para-wrap" data-para="10">
+          <h2>Reclaiming Your Mind</h2>
+        </div>
+
+        <div class="para-wrap" data-para="11">
+          <p><em>[DRAFT — this section needs work]</em> The solutions tend to be personal and structural. Personal: practice boredom. Learn to sit without stimulation. Read books. Take walks without podcasts. Structural: demand better — from regulators, from platforms, from yourself. The attention economy is not inevitable. It is a choice. A set of design decisions made by a small number of people, and those decisions can be reversed.</p>
+          <div class="para-actions">
+            <span class="reaction-chip" onclick="openReaction(11,'useful','')">✓ Useful</span>
+            <span class="reaction-chip" onclick="openReaction(11,'confusing','')">? Confusing</span>
+            <span class="reaction-chip" onclick="openReaction(11,'slow','')">⊘ Slow</span>
+            <span class="reaction-chip" onclick="openReaction(11,'love','')">♥ Love</span>
+          </div>
+        </div>
+
+        <div style="height: 40px;"></div>
+      </div>
+    </div>
+    <div class="status-bar">
+      <span id="read-pct">Reading: 0%</span>
+      <span>1,847 words · 7 min read</span>
+    </div>
+  </div>
+
+  <!-- FEEDBACK WINDOW -->
+  <div class="window" id="feedback-window">
+    <div class="title-bar" id="feedback-title-bar">
+      <div class="close-box" onclick="closeWindow('feedback-window')">✕</div>
+      <div class="title-text">📋 Review Panel</div>
+      <div class="resize-handle"></div>
+    </div>
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('comments')">Comments <span id="comment-count-badge">(4)</span></div>
+      <div class="tab" onclick="switchTab('readers')">Readers (5)</div>
+      <div class="tab" onclick="switchTab('stats')">Stats</div>
+      <div class="tab" onclick="switchTab('invite')">+ Invite</div>
+    </div>
+    <div id="tab-comments" class="tab-panel active" style="overflow-y:scroll; flex:1;">
+      <!-- Comments injected by JS -->
+    </div>
+    <div id="tab-readers" class="tab-panel" style="overflow-y:scroll; flex:1;">
+      <!-- Readers injected by JS -->
+    </div>
+    <div id="tab-stats" class="tab-panel">
+      <div class="stats-panel">
+        <div style="font-weight:bold; font-family:monospace; font-size:11px; margin-bottom:8px;">OVERVIEW</div>
+        <div class="stat-row"><span class="stat-label">Total readers invited</span><span class="stat-num">5</span></div>
+        <div class="stat-row"><span class="stat-label">Engaged (started reading)</span><span class="stat-num">4</span></div>
+        <div class="stat-row"><span class="stat-label">Reached 50%+</span><span class="stat-num">3</span></div>
+        <div class="stat-row"><span class="stat-label">Finished draft</span><span class="stat-num">1</span></div>
+        <div class="stat-row"><span class="stat-label">Total reactions</span><span class="stat-num" id="total-reactions-count">4</span></div>
+
+        <div class="chart-wrap" style="margin-top:14px;">
+          <div class="chart-title">REACTIONS BY TYPE</div>
+          <div class="chart-bars" id="reaction-chart">
+            <div class="chart-bar-wrap"><div class="chart-bar" style="height:60%"></div><div class="chart-label">USEFUL</div></div>
+            <div class="chart-bar-wrap"><div class="chart-bar" style="height:30%"></div><div class="chart-label">CONFUS.</div></div>
+            <div class="chart-bar-wrap"><div class="chart-bar" style="height:20%"></div><div class="chart-label">SLOW</div></div>
+            <div class="chart-bar-wrap"><div class="chart-bar" style="height:40%"></div><div class="chart-label">LOVE</div></div>
+          </div>
+        </div>
+
+        <div class="chart-wrap" style="margin-top:10px;">
+          <div class="chart-title">DROP-OFF BY SECTION</div>
+          <div class="chart-bars">
+            <div class="chart-bar-wrap"><div class="chart-bar" style="height:100%"></div><div class="chart-label">INTRO</div></div>
+            <div class="chart-bar-wrap"><div class="chart-bar" style="height:80%"></div><div class="chart-label">MECH.</div></div>
+            <div class="chart-bar-wrap"><div class="chart-bar" style="height:60%"></div><div class="chart-label">CONSQ.</div></div>
+            <div class="chart-bar-wrap"><div class="chart-bar" style="height:35%"></div><div class="chart-label">NOW?</div></div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px; border:2px solid black; padding:8px; font-size:10px; font-family:monospace; background:#f5f5f5;">
+          ⚠ DROP-OFF ALERT: Only 35% of readers are reaching "What Now?" — consider revising or shortening the earlier sections to build momentum.
+        </div>
+      </div>
+    </div>
+    <div id="tab-invite" class="tab-panel">
+      <div class="invite-form">
+        <div style="font-weight:bold; font-family:monospace; font-size:11px; margin-bottom:10px;">INVITE A READER</div>
+        <div class="form-group">
+          <label class="form-label">NAME</label>
+          <input class="form-input" id="inv-name" type="text" placeholder="e.g. Sarah Chen">
+        </div>
+        <div class="form-group">
+          <label class="form-label">EMAIL</label>
+          <input class="form-input" id="inv-email" type="email" placeholder="reader@example.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">READER TYPE</label>
+          <select class="form-select" id="inv-type">
+            <option>Target audience member</option>
+            <option>Subject matter expert</option>
+            <option>Writing peer / editor</option>
+            <option>General reader</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">PERSONAL NOTE (optional)</label>
+          <textarea class="form-input" id="inv-note" placeholder="Hi [name], I'm working on a piece about the attention economy and I think you'd have useful thoughts on it..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">ACCESS</label>
+          <select class="form-select" id="inv-access">
+            <option>Read & react (recommended)</option>
+            <option>Read only</option>
+            <option>Read, react & see others' comments</option>
+          </select>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label class="form-label">SHARE LINK</label>
+          <div class="invite-link-box">
+            <span>draftdesk.app/r/attn-econ-v3-x7k2</span>
+            <button class="btn" onclick="copyLink(this)" style="padding:2px 6px; font-size:9px;">COPY</button>
+          </div>
+        </div>
+        <button class="btn primary" onclick="sendInvite()" style="width:100%; justify-content:center;">SEND INVITATION →</button>
+
+        <div style="margin-top:16px; border-top:2px solid #ccc; padding-top:12px;">
+          <div style="font-weight:bold; font-family:monospace; font-size:10px; margin-bottom:6px;">INVITATION TEMPLATE</div>
+          <div style="font-size:10px; background:#f5f5f5; border:2px solid #ccc; padding:8px; line-height:1.6; font-family:Georgia,serif; color:#444;">
+            Hi [Name], I've been working on a piece about the attention economy and I'd genuinely love to know what you think. It's about a 7-minute read. I'm especially curious which parts feel most useful — and which feel slow. No obligation at all. [link]
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="status-bar">
+      <span>v3 · 2 weeks left</span>
+      <span id="reaction-tally">4 reactions</span>
+    </div>
+  </div>
+
+</div><!-- /desktop -->
+
+<!-- REACTION MODAL -->
+<div id="overlay" onclick="closeModal()"></div>
+<div id="reaction-modal">
+  <div class="title-bar">
+    <div class="close-box" onclick="closeModal()">✕</div>
+    <div class="title-text">Leave a Reaction</div>
+    <div class="resize-handle"></div>
+  </div>
+  <div class="modal-body">
+    <div class="modal-label">EXCERPT</div>
+    <div id="reaction-excerpt">—</div>
+    <div class="modal-label">REACTION TYPE</div>
+    <div class="reaction-grid">
+      <button class="reaction-btn" data-type="useful" onclick="selectReaction('useful')">✓ USEFUL — I can use this</button>
+      <button class="reaction-btn" data-type="confusing" onclick="selectReaction('confusing')">? CONFUSING — Lost me here</button>
+      <button class="reaction-btn" data-type="slow" onclick="selectReaction('slow')">⊘ SLOW — Drags a bit</button>
+      <button class="reaction-btn" data-type="love" onclick="selectReaction('love')">♥ LOVE — Don't cut this</button>
+    </div>
+    <div class="modal-label">COMMENT (optional)</div>
+    <textarea id="reaction-comment" placeholder="Any thoughts? What confused you, or why you loved it..."></textarea>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn primary" onclick="submitReaction()">Submit →</button>
+    </div>
+  </div>
+</div>
+
+<div id="invite-toast">✓ Invitation sent!</div>
+
+<script>
+// ── Clock ──
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.getHours().toString().padStart(2,'0') + ':' +
+    now.getMinutes().toString().padStart(2,'0');
+}
+updateClock();
+setInterval(updateClock, 10000);
+
+// ── Window Dragging ──
+function makeDraggable(win, handle) {
+  let ox=0,oy=0,sx=0,sy=0;
+  handle.addEventListener('mousedown', e => {
+    if(e.target.classList.contains('close-box')) return;
+    sx = e.clientX; sy = e.clientY;
+    const rect = win.getBoundingClientRect();
+    ox = rect.left; oy = rect.top;
+    function move(e) {
+      win.style.left = (ox + e.clientX - sx)+'px';
+      win.style.top  = (oy + e.clientY - sy)+'px';
+      win.style.right = 'auto';
+    }
+    function up() {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+    }
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  });
+}
+makeDraggable(document.getElementById('draft-window'),    document.getElementById('draft-title-bar'));
+makeDraggable(document.getElementById('feedback-window'), document.getElementById('feedback-title-bar'));
+
+function closeWindow(id) {
+  document.getElementById(id).style.opacity = '0.3';
+  setTimeout(()=>document.getElementById(id).style.display='none', 200);
+}
+
+// ── Tabs ──
+function switchTab(name) {
+  ['comments','readers','stats','invite'].forEach(t => {
+    document.getElementById('tab-'+t).classList.remove('active');
+  });
+  document.querySelectorAll('.tab').forEach((tab,i) => {
+    tab.classList.remove('active');
+    if(['comments','readers','stats','invite'][i]===name) tab.classList.add('active');
+  });
+  document.getElementById('tab-'+name).classList.add('active');
+}
+
+// ── Seed data ──
+const seedComments = [
+  { para:1, type:'love', reader:'S.C.', name:'Sarah C.', excerpt:'Every morning, before your feet hit the floor, the algorithm already knows...', text:'The opening is arresting. "Architecture of your mind" — that phrase is going to stick with me.', time:'2h ago' },
+  { para:1, type:'confusing', reader:'M.R.', name:'Marcus R.', excerpt:'Every morning, before your feet hit the floor...', text:'Calling it better than a therapist felt like a stretch. The algorithm doesn\'t understand me — it just knows my patterns. Worth distinguishing?', time:'3h ago' },
+  { para:4, type:'useful', reader:'J.L.', name:'Jamie L.', excerpt:'The mechanism is deceptively simple: variable reward schedules...', text:'The Skinner box connection is exactly what I was looking for. Never heard it explained this clearly before.', time:'5h ago' },
+  { para:4, type:'slow', reader:'A.K.', name:'Anya K.', excerpt:'The mechanism is deceptively simple...', text:'I\'ve read the Skinner variable-reward point so many times in attention economy pieces. Is there a fresher angle you can use here?', time:'1d ago' },
+];
+
+const readers = [
+  { initials:'SC', name:'Sarah Chen', type:'Target audience', progress:92, reactions:2, status:'Active today' },
+  { initials:'MR', name:'Marcus Rios', type:'Subject expert', progress:78, reactions:1, status:'Active yesterday' },
+  { initials:'JL', name:'Jamie Lee', type:'Writing peer', progress:65, reactions:1, status:'Active 2d ago' },
+  { initials:'AK', name:'Anya Kapoor', type:'Target audience', progress:40, reactions:1, status:'Inactive 5d ago' },
+  { initials:'TW', name:'Tom W.', type:'General reader', progress:0, reactions:0, status:'Never opened' },
+];
+
+let allComments = [...seedComments];
+
+// ── Render Comments ──
+function renderComments() {
+  const container = document.getElementById('tab-comments');
+  if (!allComments.length) {
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:#888;font-size:11px;font-family:monospace;">No reactions yet.<br>Hover over paragraphs in<br>the draft to leave one.</div>';
+    return;
+  }
+  // Group by para
+  const byPara = {};
+  allComments.forEach(c => {
+    if(!byPara[c.para]) byPara[c.para] = [];
+    byPara[c.para].push(c);
+  });
+  let html = '';
+  Object.keys(byPara).sort((a,b)=>a-b).forEach(p => {
+    html += `<div class="comment-section-label">§ PARAGRAPH ${parseInt(p)+1}</div>`;
+    byPara[p].forEach(c => {
+      html += `<div class="comment-card">
+        <div class="comment-header">
+          <div class="comment-avatar">${c.reader}</div>
+          <div>
+            <span class="comment-name">${c.name}</span>
+            <div class="comment-meta">${c.time}</div>
+          </div>
+          <span class="comment-tag tag-${c.type}">${c.type.toUpperCase()}</span>
+        </div>
+        ${c.excerpt ? `<div class="comment-excerpt">"${c.excerpt.substring(0,80)}${c.excerpt.length>80?'…':''}"</div>` : ''}
+        <div class="comment-text">${c.text || '<em style="color:#aaa">No comment added.</em>'}</div>
+      </div>`;
+    });
+  });
+  container.innerHTML = html;
+  // Update count
+  document.getElementById('comment-count-badge').textContent = `(${allComments.length})`;
+  document.getElementById('reaction-tally').textContent = `${allComments.length} reactions`;
+  document.getElementById('total-reactions-count').textContent = allComments.length;
+}
+
+// ── Render Readers ──
+function renderReaders() {
+  const container = document.getElementById('tab-readers');
+  let html = '';
+  readers.forEach(r => {
+    html += `<div class="reader-card">
+      <div class="reader-avatar">${r.initials}</div>
+      <div class="reader-info">
+        <div class="reader-name">${r.name}</div>
+        <div class="reader-meta">${r.type} · ${r.reactions} reaction${r.reactions!==1?'s':''}</div>
+        <div class="reader-meta" style="color:${r.status.includes('Never')?'#aaa':'#555'}">${r.status}</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${r.progress}%"></div></div>
+        <div style="font-size:9px;font-family:monospace;margin-top:2px;color:#777">${r.progress}% read</div>
+      </div>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+renderComments();
+renderReaders();
+
+// ── Reaction Modal ──
+let currentPara = null, currentType = null;
+
+function openReaction(para, type, excerpt) {
+  currentPara = para;
+  currentType = type;
+  document.getElementById('reaction-excerpt').textContent = excerpt || '(no specific passage selected)';
+  document.getElementById('reaction-comment').value = '';
+  // Pre-select type
+  document.querySelectorAll('.reaction-grid .reaction-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.reaction-btn[data-type="${type}"]`)?.classList.add('active');
+  document.getElementById('overlay').style.display = 'block';
+  document.getElementById('reaction-modal').style.display = 'block';
+  document.getElementById('reaction-comment').focus();
+}
+
+function closeModal() {
+  document.getElementById('overlay').style.display = 'none';
+  document.getElementById('reaction-modal').style.display = 'none';
+  currentType = null;
+  currentPara = null;
+}
+
+function selectReaction(type) {
+  currentType = type;
+  document.querySelectorAll('.reaction-grid .reaction-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.reaction-btn[data-type="${type}"]`)?.classList.add('active');
+}
+
+function submitReaction() {
+  if (!currentType) { alert('Please select a reaction type.'); return; }
+  const text = document.getElementById('reaction-comment').value.trim();
+  const excerpt = document.getElementById('reaction-excerpt').textContent;
+  allComments.push({
+    para: currentPara,
+    type: currentType,
+    reader: 'ME',
+    name: 'You',
+    excerpt: excerpt === '(no specific passage selected)' ? '' : excerpt,
+    text: text || '',
+    time: 'Just now'
+  });
+  // Mark paragraph as having comment
+  const wrap = document.querySelector(`.para-wrap[data-para="${currentPara}"]`);
+  if (wrap) wrap.classList.add('has-comment');
+  renderComments();
+  closeModal();
+  showToast('✓ Reaction saved!');
+}
+
+// ── Reading progress ──
+const draftContent = document.getElementById('draft-content');
+draftContent.addEventListener('scroll', () => {
+  const pct = Math.round((draftContent.scrollTop / (draftContent.scrollHeight - draftContent.clientHeight)) * 100);
+  document.getElementById('read-pct').textContent = `Reading: ${Math.min(pct,100)}%`;
+});
+
+// ── Invite ──
+function sendInvite() {
+  const name = document.getElementById('inv-name').value.trim();
+  const email = document.getElementById('inv-email').value.trim();
+  if(!name || !email) { showToast('⚠ Please fill in name and email.'); return; }
+  // Add to readers list
+  readers.push({
+    initials: name.split(' ').map(w=>w[0]).join('').toUpperCase().substring(0,2),
+    name: name,
+    type: document.getElementById('inv-type').value.split(' ').slice(0,2).join(' '),
+    progress: 0,
+    reactions: 0,
+    status: 'Invited · not opened'
+  });
+  renderReaders();
+  document.getElementById('inv-name').value = '';
+  document.getElementById('inv-email').value = '';
+  document.getElementById('inv-note').value = '';
+  showToast('✓ Invitation sent to ' + name + '!');
+  switchTab('readers');
+}
+
+function copyLink(btn) {
+  navigator.clipboard.writeText('https://draftdesk.app/r/attn-econ-v3-x7k2').catch(()=>{});
+  btn.textContent = '✓';
+  setTimeout(()=>btn.textContent='COPY', 1500);
+}
+
+// ── Toast ──
+function showToast(msg) {
+  const t = document.getElementById('invite-toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(()=>t.style.display='none', 2500);
+}
+
+// ── Mobile: position windows stacked ──
+function positionWindows() {
+  const vw = window.innerWidth;
+  if (vw < 900) {
+    document.getElementById('draft-window').style.cssText = 'top:10px;left:10px;right:10px;width:auto;height:48vh;';
+    document.getElementById('feedback-window').style.cssText = 'top:calc(48vh + 18px);left:10px;right:10px;width:auto;height:calc(48vh - 10px);';
+  }
+}
+positionWindows();
+window.addEventListener('resize', positionWindows);
+</script>
+</body>
+</html>
