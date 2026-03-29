@@ -100,7 +100,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /search-index.json", s.handleSearchIndex)
 	mux.HandleFunc("GET /view/{name}", s.handleView)
 	mux.HandleFunc("GET /raw/{name}", s.handleRaw)
-	mux.HandleFunc("GET /compiled/{name}.js", s.handleCompiledJSX)
+	mux.HandleFunc("GET /compiled/{name}", s.handleCompiledJSX)
 	mux.HandleFunc("GET /jsx/{name}", s.handleJSX)
 
 	if s.watch && s.watcher != nil {
@@ -192,7 +192,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		scriptType := "text/babel"
 		loadBabel := true
 		if entry, err := s.precompiled.resolve(artifact); err == nil && entry != nil {
-			scriptSrc = "/compiled/" + artifact.Name + ".js"
+			scriptSrc = "/compiled/" + artifact.Name
 			scriptType = "module"
 			loadBabel = false
 		} else if err != nil {

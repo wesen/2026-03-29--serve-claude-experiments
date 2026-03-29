@@ -33,7 +33,7 @@ silently ignored.
 | Extension | Type | How it is served |
 |-----------|------|------------------|
 | `.html` / `.htm` | HTML | Served directly as-is with `Content-Type: text/html`. The file must be a complete, self-contained HTML document. |
-| `.jsx` | JSX (React) | Wrapped in a host page that loads React 18 from esm.sh and Babel standalone from unpkg. The JSX source is fetched by the browser, transformed at runtime, and mounted into a `<div id="root">`. |
+| `.jsx` | JSX (React) | Wrapped in a host page that always loads React 18 from esm.sh. Unchanged known artifacts can be served from an embedded precompiled JS bundle, while changed or newly added files fall back to the runtime Babel path and are mounted into `<div id="root">`. |
 
 ## Adding an HTML artifact
 
@@ -93,11 +93,16 @@ Click it to view the artifact.
 
 ## Adding a JSX artifact
 
-JSX artifacts are React component files.  The server does not compile them — it
-serves the raw source to the browser alongside Babel standalone, which
-transforms JSX to plain JavaScript at runtime.  React and ReactDOM are loaded
-from the esm.sh CDN via an import map, so your component can use standard React
-imports without a bundler.
+JSX artifacts are React component files.  The server now has two serving paths:
+
+- **Precompiled path** for JSX files already captured in the embedded bundle and
+  whose on-disk contents still match the bundled source hash.
+- **Runtime fallback path** for changed or newly added JSX files.  This path
+  serves raw JSX to the browser alongside Babel standalone, which transforms JSX
+  to plain JavaScript at runtime.
+
+React and ReactDOM are loaded from the esm.sh CDN via an import map, so your
+component can use standard React imports without a bundler.
 
 ### Requirements
 
@@ -137,17 +142,18 @@ that does the following:
    `https://esm.sh/react@18.3.1` (and similarly for `react-dom` and
    `react-dom/client`).
 
-2. Loads **Babel standalone** from unpkg, which processes
-   `<script type="text/babel">` tags.
+2. Chooses one of two script paths:
+   - **Precompiled mode** uses `<script type="module" src="/compiled/my-component">`
+   - **Fallback mode** uses `<script type="text/babel" data-type="module" src="/jsx/my-component">`
 
-3. References your JSX file via
-   `<script type="text/babel" data-type="module" src="/jsx/my-component">`.
-   The `/jsx/` endpoint serves the raw file with two additions:
+3. In fallback mode only, loads **Babel standalone** from unpkg.
+
+4. The `/jsx/` endpoint serves the raw file with two additions:
    - A `import React from "react";` line prepended at the top.
    - Auto-mount code appended at the bottom that calls `createRoot` and
      renders your component into `<div id="root">`.
 
-4. Provides a clean CSS reset (`margin: 0; padding: 0; box-sizing: border-box`)
+5. Provides a clean CSS reset (`margin: 0; padding: 0; box-sizing: border-box`)
    and sets `html, body, #root` to `width: 100%; height: 100%` so your
    component gets the full viewport.
 
@@ -194,7 +200,27 @@ serve-artifacts serve --dir ./my-artifacts
 ```
 
 Visit `http://localhost:8080` and click "Counter" in the listing.  The
-interactive counter renders with working state.
+interactive counter renders with working state.  If `counter.jsx` is a new file
+that was not part of the generated bundle, it will use the runtime fallback path
+until you regenerate the embedded bundle.
+
+### Refreshing the embedded bundle
+
+If you want the current checked-in JSX demos embedded into the binary as
+precompiled JavaScript, run:
+
+```bash
+go generate ./pkg/server
+```
+
+Then rebuild:
+
+```bash
+go build ./cmd/serve-artifacts
+```
+
+This step is optional for day-to-day editing because the runtime fallback path
+still renders new and changed JSX files.
 
 ## Dynamic discovery
 
@@ -209,6 +235,13 @@ means:
   on reload.
 - **Modifying a file**: save the file.  If `--watch` is active, all connected
   browsers auto-reload.  Otherwise, manually refresh.
+
+For JSX specifically:
+
+- **Changing a bundled known file**: it will fall back to the runtime Babel
+  path until you regenerate the embedded bundle.
+- **Adding a brand-new `.jsx` file**: it works immediately through the runtime
+  fallback path without any generation step.
 
 ## Optional companion manifests
 
@@ -295,6 +328,8 @@ The script auto-reconnects with a 2-second delay if the connection drops.
 |---------|-------|----------|
 | Artifact does not appear in listing | Wrong extension or file is in a subdirectory | Only `.html`, `.htm`, and `.jsx` files in the top-level directory are discovered. Move the file or rename it. |
 | JSX artifact shows blank page | Default export shape is not recognized | Prefer a named default export or `export default Name;` for a named component. |
+| Known JSX artifact unexpectedly uses Babel fallback | The file changed after the embedded bundle was generated | Run `go generate ./pkg/server` and rebuild the binary if you want that artifact back on the precompiled path. |
+| `/compiled/{name}` returns 404 | The current file contents no longer match the embedded source hash | This is expected after local edits; refresh the bundle or rely on `/jsx/{name}` fallback. |
 | "React is not defined" in console | Missing React import | The server prepends `import React from "react"` automatically.  If you still see this, check that the import map loads correctly (requires internet). |
 | "Module not found" for third-party lib | Import map only covers React | Add the library to the import map in `pkg/server/templates/jsx-host.html`. |
 | HTML artifact missing nav button | No `</body>` tag | The nav bar is injected before `</body>`.  Add the tag. |

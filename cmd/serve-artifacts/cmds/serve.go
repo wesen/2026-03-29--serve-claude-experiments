@@ -16,7 +16,9 @@ func NewServeCmd() *cobra.Command {
 		Long: `Start an HTTP server that serves Claude.ai artifacts.
 
 HTML artifacts are served directly. JSX artifacts are wrapped in a host
-page that provides React and Babel for in-browser transformation.
+page that provides React and a hybrid execution path: unchanged known
+artifacts can use an embedded precompiled bundle, while changed or newly
+added files fall back to Babel for in-browser transformation.
 
 Use --watch to enable auto-reload: the server watches the artifact directory
 for changes and pushes reload events to connected browsers via SSE.

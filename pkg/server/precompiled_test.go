@@ -105,7 +105,7 @@ func TestHandleViewSwitchesBetweenPrecompiledAndFallback(t *testing.T) {
 
 		newServer(jsx.SourceSHA256([]byte(source))).handleView(rec, req)
 		body := rec.Body.String()
-		if !strings.Contains(body, `src="/compiled/demo.js"`) {
+		if !strings.Contains(body, `src="/compiled/demo"`) {
 			t.Fatalf("expected compiled script src, got %q", body)
 		}
 		if strings.Contains(body, "babel.min.js") {
