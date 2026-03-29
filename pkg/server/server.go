@@ -200,7 +200,13 @@ const root = createRoot(document.getElementById("root"));
 root.render(<App />);
 `
 
+	// Prepend React import — Babel's classic JSX transform compiles <div> to
+	// React.createElement("div", ...) which requires React in scope. The artifact
+	// files only import named exports (useState, etc.), not the default React export.
+	preamble := "import React from \"react\";\n"
+
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Write([]byte(preamble))
 	w.Write(jsxSource)
 	w.Write([]byte(mountCode))
 }
