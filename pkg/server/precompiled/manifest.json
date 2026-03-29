@@ -1,8 +1,14 @@
 {
   "version": 1,
-  "generated_at": "2026-03-29T14:36:20Z",
+  "generated_at": "2026-03-29T14:59:09Z",
   "source_dir": "../../imports",
   "entries": [
+    {
+      "name": "behavior-diff",
+      "filename": "behavior-diff.jsx",
+      "script_file": "behavior-diff.js",
+      "source_sha256": "cde0ccf5c244befcc419e654881d514fc7215cc4981b6e353a51c4e8cb79c342"
+    },
     {
       "name": "business-app",
       "filename": "business-app.jsx",
@@ -20,6 +26,12 @@
       "filename": "classic-mac-chat-browser.jsx",
       "script_file": "classic-mac-chat-browser.js",
       "source_sha256": "3af5d54f1550359f9ddb39eac0a0cc7667977af34a73747ac347cd55e3343371"
+    },
+    {
+      "name": "collaborator-atlas",
+      "filename": "collaborator-atlas.jsx",
+      "script_file": "collaborator-atlas.js",
+      "source_sha256": "a3948d7703bcedccff6282d1b58bc1a856d56c519f7b90a3ef31e53a9611f795"
     },
     {
       "name": "datalog-notebook",
@@ -40,10 +52,22 @@
       "source_sha256": "bf0a1a863f56e20e0e86da0bb846a6121a0fa3341e237ef0d0cafcd290d2bcf1"
     },
     {
+      "name": "intent-console",
+      "filename": "intent-console.jsx",
+      "script_file": "intent-console.js",
+      "source_sha256": "d5439a54c3863a0da498b073acfe605cee9040f985e56e0bea0066339dd4ed91"
+    },
+    {
       "name": "logic-analyzer",
       "filename": "logic-analyzer.jsx",
       "script_file": "logic-analyzer.js",
       "source_sha256": "e9c67077e802d636aa40d0c5d02c4b600817a236bc80b6330862b10f3ff11db8"
+    },
+    {
+      "name": "object-first",
+      "filename": "object-first.jsx",
+      "script_file": "object-first.js",
+      "source_sha256": "cd67f3c96b6c7e401d7ef236d872216a14d2ebf01092ab91ba7254b1f950a5b6"
     },
     {
       "name": "playwright-browser",
@@ -52,10 +76,22 @@
       "source_sha256": "d1643827a276d521fe0b200278c2d46d6c6ea90aa9a61929be5c4680dca1c9a5"
     },
     {
+      "name": "presentations",
+      "filename": "presentations.jsx",
+      "script_file": "presentations.js",
+      "source_sha256": "4a45c751fcef4b235dbcb7e220b9ebfb404b829409184a98073f3fc52bbfc362"
+    },
+    {
       "name": "retro-launcher",
       "filename": "retro-launcher.jsx",
       "script_file": "retro-launcher.js",
       "source_sha256": "48f921b2082d201a763620c43eb0cee0cb31ab6de637581e7bd97f7643890bc6"
+    },
+    {
+      "name": "trace-to-patch",
+      "filename": "trace-to-patch.jsx",
+      "script_file": "trace-to-patch.js",
+      "source_sha256": "097fa46181c06dbaae44f0405fc5e72940feeb6687df899d7d4bebebd57956fa"
     }
   ]
 }

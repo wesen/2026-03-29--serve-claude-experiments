@@ -1,0 +1,1823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Lambda Calculus — Interactive Essay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&family=Lora:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0d0f;
+    --bg2: #141418;
+    --bg3: #1a1a20;
+    --bg4: #222228;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --ink: #e8e6e0;
+    --muted: #9896a0;
+    --hint: #5a5860;
+    --accent: #c9b97a;
+    --accent2: #8b7fd4;
+    --teal: #6dbfa0;
+    --coral: #e07a60;
+    --blue: #7ab0d4;
+    --serif: 'Lora', Georgia, serif;
+    --display: 'Playfair Display', Georgia, serif;
+    --mono: 'JetBrains Mono', 'Courier New', monospace;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.8;
+    min-height: 100vh;
+  }
+
+  /* ── LAYOUT ── */
+  .shell {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    min-height: 100vh;
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 2rem 0;
+    overflow-y: auto;
+  }
+
+  .sidebar-logo {
+    font-family: var(--mono);
+    font-size: 1.3rem;
+    color: var(--accent);
+    padding: 0 1.5rem 2rem;
+    letter-spacing: -0.02em;
+  }
+
+  .sidebar-logo span { color: var(--hint); font-size: 0.75rem; display: block; margin-top: 2px; letter-spacing: 0.05em; text-transform: uppercase; }
+
+  .nav-section {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--hint);
+    padding: 1.5rem 1.5rem 0.5rem;
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.45rem 1.5rem;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-decoration: none;
+    transition: all 0.15s;
+    border-left: 2px solid transparent;
+    cursor: pointer;
+  }
+
+  .nav-link:hover { color: var(--accent); background: rgba(201,185,122,0.05); }
+  .nav-link.active { color: var(--accent); border-left-color: var(--accent); background: rgba(201,185,122,0.06); }
+  .nav-link .num { color: var(--hint); font-size: 0.65rem; }
+
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 1.5rem;
+    font-size: 0.72rem;
+    color: var(--hint);
+    font-family: var(--mono);
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── MAIN ── */
+  .main {
+    min-height: 100vh;
+    overflow-y: auto;
+  }
+
+  /* ── HERO ── */
+  .hero {
+    min-height: 60vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 4rem 5rem 3.5rem;
+    background:
+      radial-gradient(ellipse 60% 50% at 80% 40%, rgba(139,127,212,0.12) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 40% at 20% 60%, rgba(201,185,122,0.08) 0%, transparent 60%);
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: 'λ';
+    position: absolute;
+    right: 4rem;
+    top: 50%;
+    transform: translateY(-60%);
+    font-family: var(--display);
+    font-size: 18rem;
+    color: rgba(201,185,122,0.04);
+    pointer-events: none;
+    line-height: 1;
+  }
+
+  .hero-eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1.25rem;
+  }
+
+  .hero-title {
+    font-family: var(--display);
+    font-size: clamp(2.8rem, 5vw, 4.5rem);
+    font-weight: 400;
+    line-height: 1.1;
+    color: var(--ink);
+    margin-bottom: 1.25rem;
+  }
+
+  .hero-title em { font-style: italic; color: var(--accent); }
+
+  .hero-sub {
+    font-size: 1.05rem;
+    color: var(--muted);
+    max-width: 520px;
+    line-height: 1.7;
+  }
+
+  /* ── CONTENT AREA ── */
+  .content {
+    padding: 0 5rem 8rem;
+    max-width: 780px;
+  }
+
+  /* ── SECTIONS ── */
+  .section {
+    padding-top: 4rem;
+    display: none;
+  }
+
+  .section.active { display: block; }
+
+  .section-eyebrow {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.75rem;
+  }
+
+  .section-title {
+    font-family: var(--display);
+    font-size: 2rem;
+    font-weight: 400;
+    margin-bottom: 1.5rem;
+    color: var(--ink);
+  }
+
+  p { margin-bottom: 1.2rem; color: var(--muted); }
+  p strong { color: var(--ink); font-weight: 400; }
+
+  /* ── CODE BLOCKS ── */
+  .expr-block {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    margin: 1.5rem 0;
+    font-family: var(--mono);
+  }
+
+  .expr-label {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--hint);
+    margin-bottom: 0.6rem;
+  }
+
+  .expr-code {
+    font-size: 1rem;
+    color: var(--accent);
+    line-height: 1.8;
+  }
+
+  .expr-note {
+    font-size: 0.8rem;
+    color: var(--hint);
+    margin-top: 0.6rem;
+    font-family: var(--serif);
+  }
+
+  /* ── STEPPER ── */
+  .stepper {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 2rem 0;
+  }
+
+  .stepper-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.9rem 1.25rem;
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stepper-title {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+
+  .step-dots { display: flex; gap: 5px; }
+  .step-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--border2); cursor: pointer; transition: background 0.2s;
+  }
+  .step-dot.active { background: var(--accent); }
+
+  .stepper-body { padding: 1.75rem; min-height: 130px; }
+
+  .step-num {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--hint);
+    margin-bottom: 0.6rem;
+  }
+
+  .step-expr {
+    font-family: var(--mono);
+    font-size: 1.05rem;
+    line-height: 1.7;
+    margin-bottom: 1rem;
+    min-height: 2rem;
+  }
+
+  .step-explain {
+    font-size: 0.9rem;
+    color: var(--muted);
+    font-family: var(--serif);
+    line-height: 1.6;
+  }
+
+  .stepper-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1.25rem;
+    background: var(--bg3);
+    border-top: 1px solid var(--border);
+  }
+
+  .step-btn {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    padding: 0.4rem 1.1rem;
+    background: transparent;
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .step-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .step-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+  .step-btn:disabled:hover { border-color: var(--border2); color: var(--muted); }
+
+  .step-counter { font-family: var(--mono); font-size: 0.7rem; color: var(--hint); }
+
+  /* highlight spans */
+  .hr { color: var(--coral); }
+  .hb { color: var(--blue); }
+  .hg { color: var(--teal); }
+  .hp { color: var(--accent2); }
+  .ha { color: var(--accent); }
+
+  /* ── CHURCH VIS ── */
+  .church-vis {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 2rem 0;
+  }
+
+  .church-ctrl {
+    padding: 1.25rem 1.5rem;
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .church-ctrl label { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
+
+  .church-ctrl input[type=range] {
+    width: 160px;
+    accent-color: var(--accent);
+  }
+
+  .church-val {
+    font-family: var(--mono);
+    font-size: 1.4rem;
+    color: var(--accent);
+    min-width: 24px;
+  }
+
+  .church-body { padding: 1.5rem; }
+
+  .church-lambda {
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    color: var(--accent);
+    margin-bottom: 1.25rem;
+    word-break: break-all;
+    line-height: 1.8;
+  }
+
+  .church-vis-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 0.75rem;
+  }
+
+  .church-lambda-wrap {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--hint);
+  }
+
+  .church-app {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    background: var(--teal);
+    opacity: 0.8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: rgba(0,0,0,0.5);
+    transition: all 0.3s;
+  }
+
+  .church-x {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    background: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: rgba(0,0,0,0.5);
+  }
+
+  .church-zero {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--hint);
+    font-style: italic;
+  }
+
+  /* ── BOOLEANS ── */
+  .bool-demo {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 2rem 0;
+  }
+
+  .bool-header {
+    background: var(--bg3);
+    padding: 0.9rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+
+  .bool-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+  }
+
+  .bool-op {
+    padding: 1.25rem;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .bool-op:last-child { border-right: none; }
+
+  .bool-op-name {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--hint);
+    margin-bottom: 0.75rem;
+  }
+
+  .bool-inputs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 0.75rem;
+  }
+
+  .bool-toggle {
+    padding: 0.3rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid var(--border2);
+    background: var(--bg3);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .bool-toggle.on { background: var(--teal); border-color: var(--teal); color: #0d1a14; }
+  .bool-toggle.off { background: var(--coral); border-color: var(--coral); color: #1a0d09; }
+
+  .bool-result {
+    font-family: var(--mono);
+    font-size: 1.1rem;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    border-radius: 6px;
+    padding: 0 0.75rem;
+    transition: all 0.2s;
+  }
+  .bool-result.T { background: rgba(109,191,160,0.12); color: var(--teal); }
+  .bool-result.F { background: rgba(224,122,96,0.12); color: var(--coral); }
+
+  /* ── COMBINATOR CARDS ── */
+  .combo-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin: 2rem 0;
+  }
+
+  .combo-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.1rem;
+    cursor: pointer;
+    transition: all 0.18s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .combo-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(201,185,122,0.05), transparent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .combo-card:hover { border-color: var(--accent); }
+  .combo-card:hover::before { opacity: 1; }
+  .combo-card.open { border-color: var(--accent2); background: var(--bg3); }
+
+  .combo-name {
+    font-family: var(--display);
+    font-size: 1.6rem;
+    color: var(--accent);
+    margin-bottom: 0.15rem;
+    line-height: 1;
+  }
+
+  .combo-type {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--hint);
+    margin-bottom: 0.5rem;
+  }
+
+  .combo-blurb {
+    font-size: 0.82rem;
+    color: var(--muted);
+    font-family: var(--serif);
+    line-height: 1.5;
+  }
+
+  .combo-detail {
+    display: none;
+    grid-column: 1 / -1;
+    background: var(--bg3);
+    border: 1px solid var(--accent2);
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    animation: slideIn 0.2s ease;
+  }
+
+  .combo-detail.open { display: block; }
+
+  @keyframes slideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+
+  .combo-detail pre {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--accent2);
+    white-space: pre-wrap;
+    line-height: 1.9;
+  }
+
+  .combo-detail .detail-title {
+    font-family: var(--display);
+    font-size: 1.15rem;
+    color: var(--ink);
+    margin-bottom: 0.75rem;
+  }
+
+  /* ── EVALUATOR ── */
+  .evaluator {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 2rem 0;
+  }
+
+  .eval-header {
+    background: var(--bg3);
+    padding: 0.9rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .eval-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+  .eval-tag {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+  }
+
+  .eval-shortcuts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .eval-chip {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 0.28rem 0.7rem;
+    border: 1px solid var(--border2);
+    border-radius: 100px;
+    color: var(--hint);
+    cursor: pointer;
+    transition: all 0.12s;
+    background: transparent;
+  }
+  .eval-chip:hover { border-color: var(--accent); color: var(--accent); background: rgba(201,185,122,0.06); }
+
+  .eval-input-row {
+    display: flex;
+  }
+
+  .eval-input {
+    flex: 1;
+    background: var(--bg);
+    border: none;
+    padding: 1rem 1.25rem;
+    font-family: var(--mono);
+    font-size: 0.95rem;
+    color: var(--ink);
+    outline: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .eval-input::placeholder { color: var(--hint); }
+
+  .eval-run {
+    padding: 0 1.5rem;
+    background: var(--accent);
+    color: #1a1500;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+  }
+  .eval-run:hover { opacity: 0.85; }
+
+  .eval-output { padding: 1.25rem; min-height: 100px; }
+
+  .eval-step-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 5px;
+    transition: background 0.12s;
+  }
+  .eval-step-row:hover { background: var(--bg3); }
+
+  .eval-step-n { color: var(--hint); font-size: 0.68rem; min-width: 18px; text-align: right; }
+  .eval-step-expr { color: var(--ink); flex: 1; }
+  .eval-step-rule { font-size: 0.65rem; color: var(--hint); }
+
+  .eval-normal {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: rgba(109,191,160,0.08);
+    border: 1px solid rgba(109,191,160,0.2);
+    border-radius: 8px;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--teal);
+  }
+
+  .eval-placeholder {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--hint);
+    font-style: italic;
+  }
+
+  .eval-error {
+    padding: 0.75rem 1rem;
+    background: rgba(224,122,96,0.08);
+    border: 1px solid rgba(224,122,96,0.2);
+    border-radius: 8px;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--coral);
+  }
+
+  /* ── Y combinator ── */
+  .y-demo {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 2rem 0;
+  }
+
+  .y-header {
+    background: var(--bg3);
+    padding: 0.9rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .y-title { font-family: var(--mono); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+
+  .y-body { padding: 1.5rem; }
+
+  .y-track {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 1.25rem;
+  }
+
+  .y-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    background: var(--bg3);
+    transition: all 0.2s;
+    opacity: 0.4;
+  }
+  .y-row.lit { opacity: 1; border-left: 2px solid var(--accent); }
+  .y-row.result { opacity: 1; border-left: 2px solid var(--teal); background: rgba(109,191,160,0.06); }
+
+  .y-n { font-size: 0.7rem; color: var(--hint); min-width: 20px; }
+  .y-expr { color: var(--accent); flex: 1; }
+  .y-val { color: var(--teal); font-size: 0.9rem; min-width: 40px; text-align: right; }
+
+  .y-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .y-btn {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    padding: 0.4rem 1rem;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .y-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .y-n-label { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
+  .y-n-val { font-family: var(--mono); font-size: 1rem; color: var(--accent); min-width: 20px; }
+
+  /* ── PULL QUOTE ── */
+  .pull {
+    font-family: var(--display);
+    font-size: 1.2rem;
+    font-style: italic;
+    color: var(--accent);
+    border-left: 2px solid var(--accent);
+    padding: 0.5rem 0 0.5rem 1.5rem;
+    margin: 2rem 0;
+    line-height: 1.5;
+  }
+
+  /* ── BOTTOM NAV ── */
+  .bottom-nav {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .bnav-btn {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    padding: 0.6rem 1.25rem;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .bnav-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .bnav-btn.disabled { opacity: 0.2; pointer-events: none; }
+
+  /* ── SECTION TABS (mobile fallback) ── */
+  @media (max-width: 760px) {
+    .shell { grid-template-columns: 1fr; }
+    .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; padding: 1rem; gap: 0.25rem; }
+    .sidebar-logo, .sidebar-footer, .nav-section { display: none; }
+    .nav-link { font-size: 0.65rem; padding: 0.35rem 0.75rem; border-left: none; border-bottom: 2px solid transparent; }
+    .nav-link.active { border-bottom-color: var(--accent); border-left: none; }
+    .hero { padding: 2rem 1.5rem 2rem; }
+    .content { padding: 0 1.5rem 4rem; }
+    .combo-grid { grid-template-columns: 1fr; }
+    .bool-grid { grid-template-columns: 1fr; }
+    .bool-op { border-right: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-logo">λ calculus<span>Interactive Essay</span></div>
+
+    <div class="nav-section">Sections</div>
+
+    <a class="nav-link active" onclick="showSection('intro')">
+      <span class="num">01</span> Introduction
+    </a>
+    <a class="nav-link" onclick="showSection('syntax')">
+      <span class="num">02</span> Syntax
+    </a>
+    <a class="nav-link" onclick="showSection('reduction')">
+      <span class="num">03</span> Beta Reduction
+    </a>
+    <a class="nav-link" onclick="showSection('church')">
+      <span class="num">04</span> Church Numerals
+    </a>
+    <a class="nav-link" onclick="showSection('booleans')">
+      <span class="num">05</span> Booleans
+    </a>
+    <a class="nav-link" onclick="showSection('combinators')">
+      <span class="num">06</span> Combinators
+    </a>
+    <a class="nav-link" onclick="showSection('ycomb')">
+      <span class="num">07</span> The Y Combinator
+    </a>
+    <a class="nav-link" onclick="showSection('playground')">
+      <span class="num">08</span> Playground ⚡
+    </a>
+
+    <div class="sidebar-footer">
+      Alonzo Church, 1936<br>
+      Universal computation
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- HERO -->
+    <div class="hero">
+      <div class="hero-eyebrow">An Interactive Essay</div>
+      <h1 class="hero-title">The <em>Lambda</em><br>Calculus</h1>
+      <p class="hero-sub">A language with three rules that turns out to capture everything computable. Navigate using the menu — each section has live examples you can manipulate.</p>
+    </div>
+
+    <div class="content">
+
+      <!-- ────────── INTRO ────────── -->
+      <div class="section active" id="sec-intro">
+
+        <div class="section-eyebrow">§ 01 — Introduction</div>
+        <h2 class="section-title">What is the Lambda Calculus?</h2>
+
+        <p>In 1936, Alonzo Church wanted to answer a deceptively simple question: <strong>what does it mean to compute something?</strong> Before computers existed, he needed a precise mathematical language for describing computation itself.</p>
+
+        <p>He discovered something remarkable. You only need three constructs — <strong>variables</strong>, <strong>functions</strong>, and <strong>function application</strong>. Everything else — numbers, booleans, data structures, loops, recursion — can be built from these three building blocks.</p>
+
+        <p>Around the same time, Alan Turing invented his Turing machine. The two models look nothing alike, yet Church and Turing proved they are <strong>equivalent</strong>. Anything a Turing machine can compute, the lambda calculus can compute — and vice versa. This equivalence is the Church-Turing thesis.</p>
+
+        <div class="pull">
+          "Three rules. That's all. Everything else is consequence."
+        </div>
+
+        <p>The lambda calculus is the foundation of <strong>functional programming</strong> — Haskell, ML, Lisp, and countless modern languages are built on its ideas. Understanding it gives you a window into the deep structure of computation.</p>
+
+        <p>This essay is interactive. Each section has live steppers, sliders, and evaluators. Use the sidebar to navigate. When you reach the Playground, you can type any lambda expression and watch it reduce step by step.</p>
+
+        <div class="bottom-nav">
+          <span class="bnav-btn disabled">← previous</span>
+          <a class="bnav-btn" onclick="showSection('syntax')">Syntax →</a>
+        </div>
+      </div>
+
+      <!-- ────────── SYNTAX ────────── -->
+      <div class="section" id="sec-syntax">
+        <div class="section-eyebrow">§ 02 — Syntax</div>
+        <h2 class="section-title">Three Constructs</h2>
+
+        <p>The entire syntax of the lambda calculus fits in three lines. There is nothing else.</p>
+
+        <div class="expr-block">
+          <div class="expr-label">Grammar</div>
+          <div class="expr-code">
+            e ::= x<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;| λx. e<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;| e₁ e₂
+          </div>
+          <div class="expr-note">A term is a variable, an abstraction (function), or an application.</div>
+        </div>
+
+        <p><strong>Variables</strong> like <code>x</code>, <code>y</code>, <code>f</code> are just names. They stand for something — we'll substitute in values during reduction.</p>
+
+        <p><strong>Abstraction</strong> creates a function. <code>λx. e</code> means "a function that takes <code>x</code> and returns <code>e</code>." The <code>λ</code> (lambda) marks the start of the function; the variable after it is the parameter; everything after the dot is the body.</p>
+
+        <div class="expr-block">
+          <div class="expr-label">Examples of abstractions</div>
+          <div class="expr-code">
+            λx. x         <span style="color:var(--hint)">— the identity function</span><br>
+            λx. λy. x     <span style="color:var(--hint)">— constant (ignores y)</span><br>
+            λf. λx. f x   <span style="color:var(--hint)">— apply f once</span>
+          </div>
+        </div>
+
+        <p><strong>Application</strong> calls a function. <code>f x</code> means "apply f to x." Application is <strong>left-associative</strong>: <code>f x y</code> means <code>(f x) y</code>, not <code>f (x y)</code>.</p>
+
+        <p>One important restriction: functions take <strong>exactly one argument</strong>. To handle multiple arguments, we return a function. This technique is called <strong>currying</strong>, after mathematician Haskell Curry.</p>
+
+        <div class="expr-block">
+          <div class="expr-label">Currying — multi-argument functions</div>
+          <div class="expr-code">
+            λx. λy. x + y<br>
+            <span style="color:var(--hint)">— takes x, returns (λy. x + y)</span><br>
+            <span style="color:var(--hint)">— apply that to y to get x + y</span>
+          </div>
+          <div class="expr-note">In pure lambda calculus we don't have + yet — we'll encode it later.</div>
+        </div>
+
+        <p>A variable can be <strong>bound</strong> (it's the parameter of an enclosing λ) or <strong>free</strong> (it refers to something outside). In <code>λx. x y</code>, x is bound and y is free.</p>
+
+        <div class="bottom-nav">
+          <a class="bnav-btn" onclick="showSection('intro')">← Introduction</a>
+          <a class="bnav-btn" onclick="showSection('reduction')">Beta Reduction →</a>
+        </div>
+      </div>
+
+      <!-- ────────── REDUCTION ────────── -->
+      <div class="section" id="sec-reduction">
+        <div class="section-eyebrow">§ 03 — Beta Reduction</div>
+        <h2 class="section-title">The One Rule</h2>
+
+        <p>Computation in the lambda calculus happens through a single rule called <strong>β-reduction</strong>. When you apply an abstraction to an argument, substitute the argument for the parameter everywhere in the body.</p>
+
+        <div class="expr-block">
+          <div class="expr-label">The β-reduction rule</div>
+          <div class="expr-code">
+            (λx. <span class="hg">body</span>) <span class="hr">arg</span>  →  <span class="hg">body</span>[x := <span class="hr">arg</span>]
+          </div>
+          <div class="expr-note">Replace every free occurrence of x in body with arg.</div>
+        </div>
+
+        <p>A <strong>redex</strong> (reducible expression) is any subterm of the form <code>(λx. e) v</code>. Reducing it means performing the substitution. We keep reducing until no redexes remain — that's <strong>normal form</strong>.</p>
+
+        <p>Step through two examples:</p>
+
+        <!-- Stepper A -->
+        <div class="stepper">
+          <div class="stepper-header">
+            <span class="stepper-title">Example A — identity function</span>
+            <div class="step-dots" id="dotsA"></div>
+          </div>
+          <div class="stepper-body" id="sbodyA"></div>
+          <div class="stepper-footer">
+            <button class="step-btn" id="prevA" onclick="prev('A')">← prev</button>
+            <span class="step-counter" id="scA"></span>
+            <button class="step-btn" id="nextA" onclick="next('A')">next →</button>
+          </div>
+        </div>
+
+        <!-- Stepper B -->
+        <div class="stepper">
+          <div class="stepper-header">
+            <span class="stepper-title">Example B — curried application</span>
+            <div class="step-dots" id="dotsB"></div>
+          </div>
+          <div class="stepper-body" id="sbodyB"></div>
+          <div class="stepper-footer">
+            <button class="step-btn" id="prevB" onclick="prev('B')">← prev</button>
+            <span class="step-counter" id="scB"></span>
+            <button class="step-btn" id="nextB" onclick="next('B')">next →</button>
+          </div>
+        </div>
+
+        <p>Two other rules exist. <strong>α-conversion</strong> says you can rename bound variables freely — <code>λx. x</code> and <code>λy. y</code> are the same function. <strong>η-reduction</strong> says <code>λx. f x</code> simplifies to <code>f</code> when x doesn't appear free in f.</p>
+
+        <div class="bottom-nav">
+          <a class="bnav-btn" onclick="showSection('syntax')">← Syntax</a>
+          <a class="bnav-btn" onclick="showSection('church')">Church Numerals →</a>
+        </div>
+      </div>
+
+      <!-- ────────── CHURCH NUMERALS ────────── -->
+      <div class="section" id="sec-church">
+        <div class="section-eyebrow">§ 04 — Church Numerals</div>
+        <h2 class="section-title">Numbers from Nothing</h2>
+
+        <p>We have no numbers — no built-in 0 or 1. Can we represent them anyway? Church's insight was brilliant: <strong>a number is how many times you apply a function.</strong></p>
+
+        <p>Zero means "apply f zero times to x." One means "apply f once." Two means apply it twice. Every natural number becomes a pattern of applications.</p>
+
+        <div class="expr-block">
+          <div class="expr-label">Church encoding</div>
+          <div class="expr-code">
+            0 = λf. λx. x<br>
+            1 = λf. λx. f x<br>
+            2 = λf. λx. f (f x)<br>
+            3 = λf. λx. f (f (f x))<br>
+            n = λf. λx. fⁿ x
+          </div>
+        </div>
+
+        <p>Use the slider to explore. Each teal tile represents one application of f; the gold tile is x.</p>
+
+        <!-- Church visualizer -->
+        <div class="church-vis">
+          <div class="church-ctrl">
+            <label>n =</label>
+            <input type="range" min="0" max="9" value="3" id="church-slider" oninput="updateChurch(+this.value)">
+            <span class="church-val" id="church-n">3</span>
+          </div>
+          <div class="church-body">
+            <div class="church-lambda" id="church-expr"></div>
+            <div style="font-size:0.78rem;color:var(--hint);font-family:var(--mono);margin-bottom:0.6rem">Visualization — teal = f application, gold = base x</div>
+            <div class="church-vis-row" id="church-row"></div>
+          </div>
+        </div>
+
+        <p>Arithmetic follows naturally. The <strong>successor</strong> of n wraps one more f around the result. <strong>Addition</strong> chains the applications of two numerals. <strong>Multiplication</strong> nests one numeral inside another.</p>
+
+        <div class="expr-block">
+          <div class="expr-label">Church arithmetic</div>
+          <div class="expr-code">
+            SUCC = λn. λf. λx. f (n f x)<br>
+            ADD  = λm. λn. λf. λx. m f (n f x)<br>
+            MUL  = λm. λn. λf. m (n f)
+          </div>
+          <div class="expr-note">Try these in the playground: SUCC ONE, ADD TWO THREE, MUL TWO TWO</div>
+        </div>
+
+        <div class="bottom-nav">
+          <a class="bnav-btn" onclick="showSection('reduction')">← Beta Reduction</a>
+          <a class="bnav-btn" onclick="showSection('booleans')">Booleans →</a>
+        </div>
+      </div>
+
+      <!-- ────────── BOOLEANS ────────── -->
+      <div class="section" id="sec-booleans">
+        <div class="section-eyebrow">§ 05 — Booleans</div>
+        <h2 class="section-title">True, False, and Choice</h2>
+
+        <p>Booleans in the lambda calculus are functions that make a choice. <strong>TRUE</strong> picks its first argument; <strong>FALSE</strong> picks its second. A boolean <em>is</em> a selector.</p>
+
+        <div class="expr-block">
+          <div class="expr-label">Church booleans</div>
+          <div class="expr-code">
+            TRUE  = λt. λf. t<br>
+            FALSE = λt. λf. f
+          </div>
+          <div class="expr-note">TRUE takes two arguments and returns the first. FALSE returns the second.</div>
+        </div>
+
+        <p>This makes if-then-else trivially simple. <code>IF b t f</code> just applies b to the two branches — b selects which one to return.</p>
+
+        <div class="expr-block">
+          <div class="expr-label">Boolean operations</div>
+          <div class="expr-code">
+            IF  = λb. λt. λf. b t f<br>
+            AND = λp. λq. p q FALSE<br>
+            OR  = λp. λq. p TRUE q<br>
+            NOT = λp. p FALSE TRUE
+          </div>
+          <div class="expr-note">AND: "if p, return q; else return FALSE"</div>
+        </div>
+
+        <p>Toggle the inputs below to see each operation live:</p>
+
+        <!-- Boolean demo -->
+        <div class="bool-demo">
+          <div class="bool-header">Interactive boolean operations</div>
+          <div class="bool-grid">
+            <div class="bool-op">
+              <div class="bool-op-name">AND p q</div>
+              <div class="bool-inputs">
+                <div class="bool-toggle on" id="and-p" onclick="toggleBool('and-p')">TRUE</div>
+                <div class="bool-toggle on" id="and-q" onclick="toggleBool('and-q')">TRUE</div>
+              </div>
+              <div class="bool-result T" id="and-result">TRUE</div>
+            </div>
+            <div class="bool-op">
+              <div class="bool-op-name">OR p q</div>
+              <div class="bool-inputs">
+                <div class="bool-toggle off" id="or-p" onclick="toggleBool('or-p')">FALSE</div>
+                <div class="bool-toggle on" id="or-q" onclick="toggleBool('or-q')">TRUE</div>
+              </div>
+              <div class="bool-result T" id="or-result">TRUE</div>
+            </div>
+            <div class="bool-op" style="border-right:none">
+              <div class="bool-op-name">NOT p</div>
+              <div class="bool-inputs">
+                <div class="bool-toggle on" id="not-p" onclick="toggleBool('not-p')">TRUE</div>
+              </div>
+              <div class="bool-result F" id="not-result">FALSE</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stepper for AND reduction -->
+        <div class="stepper">
+          <div class="stepper-header">
+            <span class="stepper-title">Reduction: AND TRUE FALSE step by step</span>
+            <div class="step-dots" id="dotsC"></div>
+          </div>
+          <div class="stepper-body" id="sbodyC"></div>
+          <div class="stepper-footer">
+            <button class="step-btn" id="prevC" onclick="prev('C')">← prev</button>
+            <span class="step-counter" id="scC"></span>
+            <button class="step-btn" id="nextC" onclick="next('C')">next →</button>
+          </div>
+        </div>
+
+        <div class="bottom-nav">
+          <a class="bnav-btn" onclick="showSection('church')">← Church Numerals</a>
+          <a class="bnav-btn" onclick="showSection('combinators')">Combinators →</a>
+        </div>
+      </div>
+
+      <!-- ────────── COMBINATORS ────────── -->
+      <div class="section" id="sec-combinators">
+        <div class="section-eyebrow">§ 06 — Combinators</div>
+        <h2 class="section-title">The Building Blocks</h2>
+
+        <p>A <strong>combinator</strong> is a lambda expression with no free variables — completely self-contained. Several fundamental combinators appear again and again. Click any card to explore it.</p>
+
+        <div class="combo-grid" id="combo-grid"></div>
+        <div id="combo-detail"></div>
+
+        <div class="pull">
+          "S and K alone are enough for all of computation. Everything reduces to substitution and constant selection."
+        </div>
+
+        <p>This is <strong>SKI combinatory logic</strong> — a system where every lambda term can be translated into combinations of just S, K, and I (though I itself is derivable from S and K: <code>S K K = I</code>). It's Turing-complete with no variables at all.</p>
+
+        <div class="bottom-nav">
+          <a class="bnav-btn" onclick="showSection('booleans')">← Booleans</a>
+          <a class="bnav-btn" onclick="showSection('ycomb')">Y Combinator →</a>
+        </div>
+      </div>
+
+      <!-- ────────── Y COMBINATOR ────────── -->
+      <div class="section" id="sec-ycomb">
+        <div class="section-eyebrow">§ 07 — The Y Combinator</div>
+        <h2 class="section-title">Recursion from Nothing</h2>
+
+        <p>Here's a puzzle. In the lambda calculus, functions are anonymous. You can't write <code>fact n = n * fact(n-1)</code> because the function has no name to call itself with.</p>
+
+        <p>Church solved this with one of the most mind-bending constructs in mathematics: the <strong>Y combinator</strong>. It computes the <em>fixed point</em> of any function.</p>
+
+        <div class="expr-block">
+          <div class="expr-label">Y combinator</div>
+          <div class="expr-code">Y = λf. (λx. f (x x)) (λx. f (x x))</div>
+          <div class="expr-note">Y f = f (Y f) — Y hands f a copy of itself</div>
+        </div>
+
+        <!-- Stepper for Y -->
+        <div class="stepper">
+          <div class="stepper-header">
+            <span class="stepper-title">Proof: Y f = f (Y f)</span>
+            <div class="step-dots" id="dotsD"></div>
+          </div>
+          <div class="stepper-body" id="sbodyD"></div>
+          <div class="stepper-footer">
+            <button class="step-btn" id="prevD" onclick="prev('D')">← prev</button>
+            <span class="step-counter" id="scD"></span>
+            <button class="step-btn" id="nextD" onclick="next('D')">next →</button>
+          </div>
+        </div>
+
+        <p>With Y, we can define factorial. We write a helper that takes a "recursive call" as a parameter. Y hands that helper itself as an argument — creating the loop.</p>
+
+        <div class="expr-block">
+          <div class="expr-label">Factorial via Y (schematic)</div>
+          <div class="expr-code">
+            STEP = λrec. λn. IF (ISZERO n) ONE (MUL n (rec (PRED n)))<br>
+            FACT = Y STEP<br><br>
+            FACT THREE  →  Y STEP THREE  →  STEP (Y STEP) THREE  →  ...
+          </div>
+        </div>
+
+        <p>Explore the Y combinator computing factorial for small n:</p>
+
+        <!-- Y demo -->
+        <div class="y-demo">
+          <div class="y-header">
+            <span class="y-title">Y STEP n — factorial trace</span>
+            <div style="display:flex;align-items:center;gap:12px">
+              <span class="y-n-label">n =</span>
+              <span class="y-n-val" id="y-nval">4</span>
+            </div>
+          </div>
+          <div class="y-body">
+            <div class="y-track" id="y-track"></div>
+            <div class="y-controls">
+              <button class="y-btn" onclick="yStep(-1)">n − 1</button>
+              <button class="y-btn" onclick="yStep(1)">n + 1</button>
+              <span style="font-family:var(--mono);font-size:0.72rem;color:var(--hint);flex:1;text-align:right">Each row = one recursive call to STEP</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="pull">
+          "The Y combinator is a strange mirror: a function that hands you yourself."
+        </div>
+
+        <div class="bottom-nav">
+          <a class="bnav-btn" onclick="showSection('combinators')">← Combinators</a>
+          <a class="bnav-btn" onclick="showSection('playground')">Playground →</a>
+        </div>
+      </div>
+
+      <!-- ────────── PLAYGROUND ────────── -->
+      <div class="section" id="sec-playground">
+        <div class="section-eyebrow">§ 08 — Playground</div>
+        <h2 class="section-title">Live Lambda Evaluator ⚡</h2>
+
+        <p>Type any lambda expression below. Use <code>\x. body</code> for lambda (backslash). Named constants like <code>TRUE</code>, <code>FALSE</code>, <code>AND</code>, <code>OR</code>, <code>NOT</code>, <code>SUCC</code>, <code>ADD</code>, <code>MUL</code>, <code>ONE</code>, <code>TWO</code>, <code>THREE</code>, <code>K</code>, <code>S</code>, <code>I</code>, <code>B</code>, <code>C</code>, <code>W</code> are pre-defined. Press Enter or click REDUCE.</p>
+
+        <div class="evaluator">
+          <div class="eval-header">
+            <div class="eval-dot"></div>
+            <span class="eval-tag">Lambda Evaluator — call-by-name, up to 60 steps</span>
+          </div>
+          <div class="eval-shortcuts" id="eval-chips"></div>
+          <div class="eval-input-row">
+            <input class="eval-input" id="eval-in" placeholder="(\x. x) y" onkeydown="if(event.key==='Enter') runEval()">
+            <button class="eval-run" onclick="runEval()">Reduce →</button>
+          </div>
+          <div class="eval-output" id="eval-out">
+            <div class="eval-placeholder">Enter an expression and click Reduce →</div>
+          </div>
+        </div>
+
+        <p style="font-size:0.82rem;color:var(--hint);font-family:var(--mono)">
+          Named constants are expanded lazily. Diverging terms (Ω, Y applied directly) hit the step limit.
+        </p>
+
+        <div class="bottom-nav">
+          <a class="bnav-btn" onclick="showSection('ycomb')">← Y Combinator</a>
+          <span class="bnav-btn disabled">End of essay</span>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════════════════
+
+const SECTIONS = ['intro','syntax','reduction','church','booleans','combinators','ycomb','playground'];
+
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-' + id).classList.add('active');
+  document.querySelectorAll('.nav-link').forEach(a => a.classList.remove('active'));
+  document.querySelectorAll('.nav-link')[SECTIONS.indexOf(id)].classList.add('active');
+  document.querySelector('.main').scrollTo({top: 0, behavior: 'smooth'});
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  STEPPERS
+// ═══════════════════════════════════════════════════════════
+
+const STEPPERS = {
+  A: [
+    {
+      label: 'Start',
+      expr: `<span class="hp">(λx. x)</span> <span class="hr">y</span>`,
+      explain: 'The identity function applied to y. The purple part is the function; red is the argument we are about to substitute in.'
+    },
+    {
+      label: 'Identify redex',
+      expr: `<span class="hp">(λx. <span class="hg">x</span>)</span> <span class="hr">y</span>`,
+      explain: 'A redex is a function applied to an argument. The parameter is x and the body (shown green) is just x. We will substitute y for every free x in the body.'
+    },
+    {
+      label: 'β-reduce: substitute y for x',
+      expr: `<span class="hg">y</span>`,
+      explain: 'After substituting y for x in the body (which was x), we get y. The function consumed itself and returned its argument.'
+    },
+    {
+      label: 'Normal form',
+      expr: `y`,
+      explain: 'No more redexes. y is in normal form. The identity function returned its argument unchanged — as expected.'
+    }
+  ],
+  B: [
+    {
+      label: 'Start',
+      expr: `<span class="hp">(λx. λy. x)</span> <span class="hr">a</span> <span class="hb">b</span>`,
+      explain: 'The constant function — it keeps its first argument and discards the second. We apply it to a then b. Application is left-associative: ((λx. λy. x) a) b.'
+    },
+    {
+      label: 'First β-reduction: substitute a for x',
+      expr: `<span class="hp">(λy. <span class="hr">a</span>)</span> <span class="hb">b</span>`,
+      explain: 'Substitute a for x in the body (λy. x). The x is replaced by a, giving (λy. a). The variable y is not yet substituted — we still have b waiting.'
+    },
+    {
+      label: 'Second β-reduction: substitute b for y',
+      expr: `<span class="hr">a</span>`,
+      explain: 'Apply (λy. a) to b. Substitute b for y in the body a. But y doesn\'t appear in a, so nothing changes. Result: a.'
+    },
+    {
+      label: 'Normal form: a',
+      expr: `a`,
+      explain: 'The constant function always returns its first argument, discarding the second. This is also the K combinator and the encoding of TRUE.'
+    }
+  ],
+  C: [
+    {
+      label: 'Start: AND TRUE FALSE',
+      expr: `AND <span class="hg">TRUE</span> <span class="hr">FALSE</span>`,
+      explain: 'We evaluate AND TRUE FALSE. AND = λp. λq. p q FALSE. Let\'s expand it.'
+    },
+    {
+      label: 'Expand AND',
+      expr: `<span class="hp">(λp. λq. p q FALSE)</span> <span class="hg">TRUE</span> <span class="hr">FALSE</span>`,
+      explain: 'AND fully expanded. Apply to TRUE first (left-associative means this is ((AND TRUE) FALSE)).'
+    },
+    {
+      label: 'Substitute TRUE for p',
+      expr: `<span class="hp">(λq. <span class="hg">TRUE</span> q FALSE)</span> <span class="hr">FALSE</span>`,
+      explain: 'TRUE substituted for p. Now apply this to the remaining argument FALSE.'
+    },
+    {
+      label: 'Substitute FALSE for q',
+      expr: `<span class="hg">TRUE</span> <span class="hr">FALSE</span> FALSE`,
+      explain: 'FALSE substituted for q. Now we have TRUE applied to two arguments: FALSE and FALSE. TRUE = λt. λf. t — it picks its first argument.'
+    },
+    {
+      label: 'Expand TRUE = λt. λf. t',
+      expr: `<span class="hp">(λt. λf. t)</span> <span class="hr">FALSE</span> FALSE`,
+      explain: 'TRUE expanded. Apply to the first FALSE: substitute FALSE for t.'
+    },
+    {
+      label: 'Substitute FALSE for t',
+      expr: `<span class="hp">(λf. <span class="hr">FALSE</span>)</span> FALSE`,
+      explain: 'After substituting, we get (λf. FALSE) applied to FALSE. The body is the constant FALSE — f is ignored.'
+    },
+    {
+      label: 'Final result: FALSE',
+      expr: `<span class="hr">FALSE</span>`,
+      explain: 'AND TRUE FALSE = FALSE. ✓ Applying (λf. FALSE) to FALSE discards the argument and returns FALSE. The truth table agrees: T ∧ F = F.'
+    }
+  ],
+  D: [
+    {
+      label: 'Start: Y f',
+      expr: `Y f`,
+      explain: 'Y is the fixed-point combinator. Apply it to an arbitrary function f and watch what happens.'
+    },
+    {
+      label: 'Expand Y',
+      expr: `<span class="hp">(λf. (λx. f (x x)) (λx. f (x x)))</span> f`,
+      explain: 'Unfold the definition of Y. The body is a self-application: a function applied to itself.'
+    },
+    {
+      label: 'Substitute f',
+      expr: `(λx. <span class="ha">f</span> (x x)) (λx. <span class="ha">f</span> (x x))`,
+      explain: 'Substitute our f into both occurrences. Now we have two identical terms: (λx. f (x x)) applied to itself.'
+    },
+    {
+      label: 'Apply: substitute right term for x',
+      expr: `<span class="ha">f</span> <span class="hb">((λx. f (x x)) (λx. f (x x)))</span>`,
+      explain: 'Substitute (λx. f (x x)) for x in f (x x). The result: f applied to — the same self-application we started with!'
+    },
+    {
+      label: 'Recognize the loop',
+      expr: `<span class="ha">f</span> <span class="hg">(Y f)</span>`,
+      explain: 'The blue subterm is exactly Y f again! So Y f = f (Y f). Y hands f a copy of itself — this is the fixed point. F "sees" its own result as an argument and can recurse.'
+    }
+  ]
+};
+
+const stepIdx = {};
+Object.keys(STEPPERS).forEach(k => stepIdx[k] = 0);
+
+function renderStepper(id) {
+  const steps = STEPPERS[id];
+  const i = stepIdx[id];
+  const s = steps[i];
+
+  document.getElementById('sbody' + id).innerHTML = `
+    <div style="animation: slideIn 0.2s ease">
+      <div class="step-num">Step ${i+1} of ${steps.length} — ${s.label}</div>
+      <div class="step-expr">${s.expr}</div>
+      <div class="step-explain">${s.explain}</div>
+    </div>
+  `;
+
+  const dots = document.getElementById('dots' + id);
+  dots.innerHTML = steps.map((_,j) =>
+    `<div class="step-dot ${j===i?'active':''}" onclick="jumpStep('${id}',${j})"></div>`
+  ).join('');
+
+  document.getElementById('prev'+id).disabled = i === 0;
+  document.getElementById('next'+id).disabled = i === steps.length-1;
+  document.getElementById('sc'+id).textContent = `${i+1} / ${steps.length}`;
+}
+
+function next(id) { if(stepIdx[id] < STEPPERS[id].length-1) { stepIdx[id]++; renderStepper(id); } }
+function prev(id) { if(stepIdx[id] > 0) { stepIdx[id]--; renderStepper(id); } }
+function jumpStep(id, i) { stepIdx[id] = i; renderStepper(id); }
+
+['A','B','C','D'].forEach(renderStepper);
+
+
+// ═══════════════════════════════════════════════════════════
+//  CHURCH NUMERALS
+// ═══════════════════════════════════════════════════════════
+
+function churchStr(n) {
+  if (n === 0) return 'λf. λx. x';
+  let body = 'x';
+  for (let i = 0; i < n; i++) body = 'f (' + body + ')';
+  if (n === 1) body = 'f x';
+  return `λf. λx. ${body}`;
+}
+
+function updateChurch(n) {
+  document.getElementById('church-n').textContent = n;
+  document.getElementById('church-expr').textContent = churchStr(n);
+  const row = document.getElementById('church-row');
+  row.innerHTML = '';
+
+  if (n === 0) {
+    row.innerHTML = '<span class="church-zero">λf. λx. x  (no applications — just x)</span>';
+    return;
+  }
+  const wrap = document.createElement('span');
+  wrap.className = 'church-lambda-wrap';
+  wrap.textContent = 'λf. λx.';
+  row.appendChild(wrap);
+
+  for (let i = 0; i < n; i++) {
+    const d = document.createElement('div');
+    d.className = 'church-app';
+    d.title = `f application ${i+1}`;
+    d.textContent = 'f';
+    d.style.opacity = 0.35 + 0.65 * (i+1)/n;
+    row.appendChild(d);
+  }
+  const x = document.createElement('div');
+  x.className = 'church-x';
+  x.textContent = 'x';
+  row.appendChild(x);
+}
+updateChurch(3);
+
+
+// ═══════════════════════════════════════════════════════════
+//  BOOLEANS
+// ═══════════════════════════════════════════════════════════
+
+const boolState = {
+  'and-p': true, 'and-q': true,
+  'or-p': false, 'or-q': true,
+  'not-p': true
+};
+
+function toggleBool(id) {
+  boolState[id] = !boolState[id];
+  const el = document.getElementById(id);
+  el.textContent = boolState[id] ? 'TRUE' : 'FALSE';
+  el.className = 'bool-toggle ' + (boolState[id] ? 'on' : 'off');
+  updateBoolResults();
+}
+
+function updateBoolResults() {
+  const andR = boolState['and-p'] && boolState['and-q'];
+  const orR  = boolState['or-p']  || boolState['or-q'];
+  const notR = !boolState['not-p'];
+
+  function set(id, val) {
+    const el = document.getElementById(id);
+    el.textContent = val ? 'TRUE' : 'FALSE';
+    el.className = 'bool-result ' + (val ? 'T' : 'F');
+  }
+  set('and-result', andR);
+  set('or-result', orR);
+  set('not-result', notR);
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  COMBINATORS
+// ═══════════════════════════════════════════════════════════
+
+const COMBINATORS = [
+  {
+    name: 'I', def: 'λx. x', short: 'Identity',
+    blurb: 'Returns its argument unchanged. The simplest function.',
+    detail: `Definition:  I x  =  x\n\nI is the identity function. Applying it to anything gives you that thing back.\n\nI a  →  a\nI (λx. x)  →  (λx. x)\n\nI is derivable from S and K:  S K K = I`
+  },
+  {
+    name: 'K', def: 'λx. λy. x', short: 'Constant',
+    blurb: 'Returns first argument, ignores second. Also the encoding of TRUE.',
+    detail: `Definition:  K x y  =  x\n\nK creates a constant function. No matter what second argument you give it, it returns x.\n\nK a b  →  a\nK "hello" "world"  →  "hello"\n\nNotice: K is exactly TRUE = λt. λf. t`
+  },
+  {
+    name: 'S', def: 'λx. λy. λz. x z (y z)', short: 'Substitution',
+    blurb: 'Distributes an argument to two functions, then applies them. With K, it is Turing-complete.',
+    detail: `Definition:  S x y z  =  (x z) (y z)\n\nS applies both x and y to z, then applies the results to each other. It "shares" z.\n\nS K K x\n  =  (K x) (K x)\n  =  x\n\nSo S K K = I! The identity combinator from just S and K.\n\nEvery lambda term can be expressed using only S and K.`
+  },
+  {
+    name: 'B', def: 'λf. λg. λx. f (g x)', short: 'Composition',
+    blurb: 'Composes two functions: apply g first, then f.',
+    detail: `Definition:  B f g x  =  f (g x)\n\nFunction composition. In mathematics: (f ∘ g)(x).\nIn Haskell: the (.) operator.\n\nB not not  =  (not ∘ not)  — double negation, equals identity on booleans\n\nB SUCC SUCC ZERO  →  TWO  (adds 2)`
+  },
+  {
+    name: 'C', def: 'λf. λx. λy. f y x', short: 'Flip',
+    blurb: 'Swaps the first two arguments of a binary function.',
+    detail: `Definition:  C f x y  =  f y x\n\nC flips argument order. In Haskell: flip.\n\nC K a b  =  K b a  =  b\n(C K discards the first argument instead of the second)\n\nC is useful when you have a binary function but need to apply the arguments in the wrong order.`
+  },
+  {
+    name: 'W', def: 'λf. λx. f x x', short: 'Duplication',
+    blurb: 'Applies a binary function to the same argument twice.',
+    detail: `Definition:  W f x  =  f x x\n\nW duplicates its argument.\n\nW K x\n  =  K x x\n  =  x\nSo W K = I  — another way to derive identity!\n\nW is the self-application seed. The Y combinator's inner structure is related to W.`
+  }
+];
+
+let openCombo = null;
+
+function renderCombos() {
+  const grid = document.getElementById('combo-grid');
+  grid.innerHTML = COMBINATORS.map((c, i) => `
+    <div class="combo-card ${openCombo===i?'open':''}" onclick="toggleCombo(${i})">
+      <div class="combo-name">${c.name}</div>
+      <div class="combo-type">${c.def}</div>
+      <div style="font-size:0.68rem;font-family:var(--mono);color:var(--hint);margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.08em">${c.short}</div>
+      <div class="combo-blurb">${c.blurb}</div>
+    </div>
+  `).join('');
+}
+
+function toggleCombo(i) {
+  openCombo = openCombo === i ? null : i;
+  renderCombos();
+  const detail = document.getElementById('combo-detail');
+  if (openCombo === null) { detail.innerHTML = ''; return; }
+  const c = COMBINATORS[openCombo];
+  detail.innerHTML = `
+    <div class="combo-detail open">
+      <div class="detail-title">${c.name} — ${c.short}</div>
+      <pre>${c.detail}</pre>
+    </div>
+  `;
+}
+
+renderCombos();
+
+
+// ═══════════════════════════════════════════════════════════
+//  Y COMBINATOR DEMO (factorial trace)
+// ═══════════════════════════════════════════════════════════
+
+let yN = 4;
+
+function factorial(n) {
+  const steps = [];
+  for (let i = n; i >= 0; i--) {
+    if (i === 0) {
+      steps.push({ expr: `STEP (Y STEP) 0`, val: 1, base: true });
+    } else {
+      steps.push({ expr: `STEP (Y STEP) ${i}`, val: null });
+    }
+  }
+  // compute vals
+  let acc = 1;
+  for (let i = 0; i <= n; i++) {
+    if (i === 0) steps[n - 0].val = 1;
+    else {
+      const row = steps[n - i];
+      row.val = i * steps[n - i + 1].val;
+    }
+  }
+  return steps;
+}
+
+function renderY() {
+  document.getElementById('y-nval').textContent = yN;
+  const steps = factorial(yN);
+  const track = document.getElementById('y-track');
+  track.innerHTML = '';
+  steps.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'y-row' + (i === steps.length - 1 ? ' result' : ' lit');
+    const n = yN - i;
+    row.innerHTML = `
+      <span class="y-n">${i + 1}</span>
+      <span class="y-expr">${s.expr}</span>
+      <span class="y-val">${s.val !== null ? '→ ' + s.val : '→ ?'}</span>
+    `;
+    track.appendChild(row);
+  });
+}
+
+function yStep(delta) {
+  yN = Math.max(0, Math.min(7, yN + delta));
+  renderY();
+}
+
+renderY();
+
+
+// ═══════════════════════════════════════════════════════════
+//  LAMBDA EVALUATOR
+// ═══════════════════════════════════════════════════════════
+
+const DEFS = {
+  'I':     '\\x. x',
+  'K':     '\\x. \\y. x',
+  'S':     '\\x. \\y. \\z. x z (y z)',
+  'B':     '\\f. \\g. \\x. f (g x)',
+  'C':     '\\f. \\x. \\y. f y x',
+  'W':     '\\f. \\x. f x x',
+  'TRUE':  '\\t. \\f. t',
+  'FALSE': '\\t. \\f. f',
+  'AND':   '\\p. \\q. p q (\\t. \\f. f)',
+  'OR':    '\\p. \\q. p (\\t. \\f. t) q',
+  'NOT':   '\\p. p (\\t. \\f. f) (\\t. \\f. t)',
+  'IF':    '\\b. \\t. \\f. b t f',
+  'ZERO':  '\\f. \\x. x',
+  'ONE':   '\\f. \\x. f x',
+  'TWO':   '\\f. \\x. f (f x)',
+  'THREE': '\\f. \\x. f (f (f x))',
+  'FOUR':  '\\f. \\x. f (f (f (f x)))',
+  'SUCC':  '\\n. \\f. \\x. f (n f x)',
+  'ADD':   '\\m. \\n. \\f. \\x. m f (n f x)',
+  'MUL':   '\\m. \\n. \\f. m (n f)',
+};
+
+const CHIPS = [
+  '(\\x. x) y', 'TRUE a b', 'FALSE a b',
+  'AND TRUE TRUE', 'AND TRUE FALSE', 'OR FALSE TRUE',
+  'NOT TRUE', 'NOT FALSE',
+  'SUCC ZERO', 'SUCC ONE', 'ADD ONE TWO',
+  'MUL TWO THREE', 'K a b', 'S K K x', 'B f g x',
+];
+
+const chipsEl = document.getElementById('eval-chips');
+chipsEl.innerHTML = CHIPS.map(c =>
+  `<button class="eval-chip" onclick="loadChip(${JSON.stringify(c)})">${c}</button>`
+).join('');
+
+function loadChip(s) {
+  document.getElementById('eval-in').value = s;
+  runEval();
+}
+
+function tokenize(s) {
+  const toks = [];
+  let i = 0;
+  while (i < s.length) {
+    if (/\s/.test(s[i])) { i++; continue; }
+    if (s[i] === '\\' || s[i] === 'λ') { toks.push('LAMBDA'); i++; }
+    else if (s[i] === '.') { toks.push('DOT'); i++; }
+    else if (s[i] === '(') { toks.push('LPAREN'); i++; }
+    else if (s[i] === ')') { toks.push('RPAREN'); i++; }
+    else if (/[a-zA-Z_]/.test(s[i])) {
+      let n = '';
+      while (i < s.length && /[a-zA-Z_0-9]/.test(s[i])) n += s[i++];
+      toks.push({id: n});
+    } else i++;
+  }
+  return toks;
+}
+
+let _pos, _toks;
+function peek() { return _toks[_pos]; }
+function consume() { return _toks[_pos++]; }
+
+function parseTerm() {
+  const parts = [];
+  while (_pos < _toks.length && peek() !== 'RPAREN') parts.push(parseAtom());
+  if (parts.length === 0) throw new Error('empty expression');
+  return parts.reduce((f, a) => ({t:'app', fn:f, arg:a}));
+}
+
+function parseAtom() {
+  const tok = peek();
+  if (!tok) throw new Error('unexpected end');
+  if (tok === 'LAMBDA') {
+    consume();
+    const p = consume();
+    if (!p || !p.id) throw new Error('expected parameter name');
+    if (consume() !== 'DOT') throw new Error('expected dot');
+    return {t:'abs', param:p.id, body:parseTerm()};
+  }
+  if (tok === 'LPAREN') {
+    consume();
+    const inner = parseTerm();
+    if (consume() !== 'RPAREN') throw new Error('missing )');
+    return inner;
+  }
+  if (tok && tok.id) { consume(); return {t:'var', name:tok.id}; }
+  throw new Error('unexpected token');
+}
+
+function parse(s) {
+  _toks = tokenize(s);
+  _pos = 0;
+  return parseTerm();
+}
+
+const _defCache = {};
+function getDef(name) {
+  if (!_defCache[name] && DEFS[name]) _defCache[name] = parse(DEFS[name]);
+  return _defCache[name] || null;
+}
+
+function subst(e, name, val) {
+  switch(e.t) {
+    case 'var':  return e.name === name ? val : e;
+    case 'abs':  return e.param === name ? e : {t:'abs', param:e.param, body:subst(e.body, name, val)};
+    case 'app':  return {t:'app', fn:subst(e.fn,name,val), arg:subst(e.arg,name,val)};
+  }
+  return e;
+}
+
+function str(e, prec=0) {
+  switch(e.t) {
+    case 'var': return e.name;
+    case 'abs': {
+      let params=[e.param], body=e.body;
+      while(body.t==='abs'){params.push(body.param);body=body.body;}
+      const s = 'λ'+params.join('. λ')+'. '+str(body,0);
+      return prec>0?'('+s+')':s;
+    }
+    case 'app': {
+      const s = str(e.fn,1)+' '+str(e.arg,2);
+      return prec>1?'('+s+')':s;
+    }
+  }
+}
+
+function step(e) {
+  switch(e.t) {
+    case 'var': { const d=getDef(e.name); return d ? [d,true] : [e,false]; }
+    case 'abs': { const [b,c]=step(e.body); return [{t:'abs',param:e.param,body:b},c]; }
+    case 'app': {
+      if (e.fn.t==='abs') return [subst(e.fn.body, e.fn.param, e.arg), true];
+      if (e.fn.t==='var') { const d=getDef(e.fn.name); if(d) return [{t:'app',fn:d,arg:e.arg},true]; }
+      const [nf,cf]=step(e.fn); if(cf) return [{t:'app',fn:nf,arg:e.arg},true];
+      const [na,ca]=step(e.arg); return [{t:'app',fn:e.fn,arg:na},ca];
+    }
+  }
+  return [e,false];
+}
+
+function runEval() {
+  const input = document.getElementById('eval-in').value.trim();
+  if (!input) return;
+  const out = document.getElementById('eval-out');
+  try {
+    let ast = parse(input);
+    const steps = [{expr: str(ast), rule: 'input'}];
+    const MAX = 60;
+    for (let i = 0; i < MAX; i++) {
+      const [next, changed] = step(ast);
+      if (!changed) break;
+      const s = str(next);
+      if (s !== steps[steps.length-1].expr) steps.push({expr:s, rule:'β'});
+      ast = next;
+      if (steps.length > MAX) break;
+    }
+    const rows = steps.map((s, i) => `
+      <div class="eval-step-row">
+        <span class="eval-step-n">${i+1}</span>
+        <span class="eval-step-expr">${s.expr}</span>
+        <span class="eval-step-rule">${i===0?'input':'β'}</span>
+      </div>
+    `).join('');
+    const last = steps[steps.length-1];
+    const fin = steps.length === 1
+      ? '<div class="eval-normal">Already in normal form.</div>'
+      : `<div class="eval-normal">⊢ Normal form: ${last.expr}</div>`;
+    out.innerHTML = rows + fin;
+  } catch(e) {
+    out.innerHTML = `<div class="eval-error">Parse error: ${e.message}</div>`;
+  }
+}
+
+</script>
+</body>
+</html>

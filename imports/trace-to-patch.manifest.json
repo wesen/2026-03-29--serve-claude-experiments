@@ -1,0 +1,7 @@
+{
+  "title": "Trace To Patch Debugger",
+  "description": "Debugging surface that traces a failure from stack frames to tests and candidate patch proposals.",
+  "tags": ["debugging", "trace", "patch", "workflow"],
+  "original_date": "2026-03-29",
+  "links": []
+}
