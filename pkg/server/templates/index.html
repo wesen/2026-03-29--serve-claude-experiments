@@ -123,7 +123,7 @@
           <div class="badge badge-{{.Type}}">{{.Type}}</div>
           <div class="artifact-info">
             <a href="/view/{{.Name}}">{{.Title}}</a>
-            <div class="artifact-meta">{{.Filename}} &middot; {{.Size}} bytes &middot; {{.ModifiedAt.Format "2006-01-02 15:04"}}</div>
+            <div class="artifact-meta">{{.Filename}} &middot; {{.Size | humanSize}} &middot; {{.ModifiedAt.Format "2006-01-02 15:04"}}</div>
           </div>
         </li>
         {{end}}
