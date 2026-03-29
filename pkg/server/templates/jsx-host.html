@@ -35,13 +35,6 @@
   {{if .Watch}}<script>
 (function(){var es=new EventSource("/events");es.onmessage=function(e){if(e.data==="reload")location.reload()};es.onerror=function(){setTimeout(function(){location.reload()},2000)};})();
   </script>{{end}}
-  <script type="text/babel" data-type="module">
-{{.JSXSource}}
-
-// Auto-mount the default export
-import { createRoot } from "react-dom/client";
-const root = createRoot(document.getElementById("root"));
-root.render(<App />);
-  </script>
+  <script type="text/babel" data-type="module" src="/jsx/{{.Name}}"></script>
 </body>
 </html>

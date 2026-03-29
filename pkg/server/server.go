@@ -91,6 +91,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /view/{name}", s.handleView)
 	mux.HandleFunc("GET /raw/{name}", s.handleRaw)
+	mux.HandleFunc("GET /jsx/{name}", s.handleJSX)
 
 	if s.watch && s.watcher != nil {
 		mux.HandleFunc("GET /events", s.watcher.handleSSE)
@@ -163,22 +164,45 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(modified))
 
 	case "jsx":
-		jsxSource, err := os.ReadFile(artifact.Path)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		// Escape </script> to prevent premature tag closing
-		safeSource := strings.ReplaceAll(string(jsxSource), "</script>", `<\/script>`)
-
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		s.jsxHostTemplate.Execute(w, map[string]interface{}{
-			"Title":     artifact.Title,
-			"Name":      artifact.Name,
-			"JSXSource": template.JS(safeSource),
-			"Watch":     s.watch,
+			"Title": artifact.Title,
+			"Name":  artifact.Name,
+			"Watch": s.watch,
 		})
 	}
+}
+
+// handleJSX serves JSX source with auto-mount code appended.
+// This endpoint exists to avoid Go's html/template escaping — the JSX source
+// is served as plain text/javascript and never passes through a template.
+func (s *Server) handleJSX(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	artifact, err := s.scanner.FindByName(name)
+	if err != nil || artifact.Type != "jsx" {
+		http.NotFound(w, r)
+		return
+	}
+
+	jsxSource, err := os.ReadFile(artifact.Path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Append auto-mount code that renders the default export into #root
+	mountCode := `
+
+// Auto-mount the default export
+import { createRoot } from "react-dom/client";
+const root = createRoot(document.getElementById("root"));
+root.render(<App />);
+`
+
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Write(jsxSource)
+	w.Write([]byte(mountCode))
 }
 
 func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
