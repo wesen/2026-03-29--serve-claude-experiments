@@ -25,6 +25,7 @@ type Server struct {
 	port            int
 	watch           bool
 	watcher         *watcher
+	precompiled     *precompiledBundle
 	indexTemplate   *template.Template
 	jsxHostTemplate *template.Template
 }
@@ -65,6 +66,11 @@ func New(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("parsing jsx-host template: %w", err)
 	}
 
+	precompiled, err := loadEmbeddedPrecompiledBundle()
+	if err != nil {
+		return nil, err
+	}
+
 	var w *watcher
 	if cfg.Watch {
 		w = newWatcher(cfg.Dir)
@@ -76,6 +82,7 @@ func New(cfg Config) (*Server, error) {
 		port:            cfg.Port,
 		watch:           cfg.Watch,
 		watcher:         w,
+		precompiled:     precompiled,
 		indexTemplate:   indexTmpl,
 		jsxHostTemplate: jsxHostTmpl,
 	}, nil
@@ -93,6 +100,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /search-index.json", s.handleSearchIndex)
 	mux.HandleFunc("GET /view/{name}", s.handleView)
 	mux.HandleFunc("GET /raw/{name}", s.handleRaw)
+	mux.HandleFunc("GET /compiled/{name}.js", s.handleCompiledJSX)
 	mux.HandleFunc("GET /jsx/{name}", s.handleJSX)
 
 	if s.watch && s.watcher != nil {
@@ -180,13 +188,57 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(modified))
 
 	case "jsx":
+		scriptSrc := "/jsx/" + artifact.Name
+		scriptType := "text/babel"
+		loadBabel := true
+		if entry, err := s.precompiled.resolve(artifact); err == nil && entry != nil {
+			scriptSrc = "/compiled/" + artifact.Name + ".js"
+			scriptType = "module"
+			loadBabel = false
+		} else if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		s.jsxHostTemplate.Execute(w, map[string]interface{}{
-			"Title": artifact.Title,
-			"Name":  artifact.Name,
-			"Watch": s.watch,
+			"Title":      artifact.Title,
+			"Name":       artifact.Name,
+			"Watch":      s.watch,
+			"ScriptSrc":  scriptSrc,
+			"ScriptType": scriptType,
+			"LoadBabel":  loadBabel,
 		})
 	}
+}
+
+func (s *Server) handleCompiledJSX(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	artifact, err := s.scanner.FindByName(name)
+	if err != nil || artifact.Type != "jsx" {
+		http.NotFound(w, r)
+		return
+	}
+
+	entry, err := s.precompiled.resolve(artifact)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if entry == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	script, err := s.precompiled.script(name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Write(script)
 }
 
 // handleJSX serves JSX source with auto-mount code appended.

@@ -14,7 +14,7 @@
     }
   }
   </script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  {{if .LoadBabel}}<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>{{end}}
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body, #root { width: 100%; height: 100%; }
@@ -35,6 +35,6 @@
   {{if .Watch}}<script>
 (function(){var es=new EventSource("/events");es.onmessage=function(e){if(e.data==="reload")location.reload()};es.onerror=function(){setTimeout(function(){location.reload()},2000)};})();
   </script>{{end}}
-  <script type="text/babel" data-type="module" src="/jsx/{{.Name}}"></script>
+  <script type="{{.ScriptType}}" {{if .LoadBabel}}data-type="module"{{end}} src="{{.ScriptSrc}}"></script>
 </body>
 </html>
