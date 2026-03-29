@@ -11,13 +11,20 @@ import (
 
 // Artifact represents a single Claude artifact file.
 type Artifact struct {
-	Name       string    // filename without extension, e.g., "business-app"
-	Filename   string    // full filename, e.g., "business-app.jsx"
-	Type       string    // "html" or "jsx"
-	Title      string    // extracted from <title> tag or component name
-	Size       int64     // file size in bytes
-	ModifiedAt time.Time // last modification time
-	Path       string    // absolute path on disk
+	Name          string         // filename without extension, e.g., "business-app"
+	Filename      string         // full filename, e.g., "business-app.jsx"
+	Type          string         // "html" or "jsx"
+	Title         string         // extracted from <title> tag, component name, or manifest title
+	Size          int64          // file size in bytes
+	ModifiedAt    time.Time      // last modification time
+	Path          string         // absolute path on disk
+	Description   string         // manifest description
+	Tags          []string       // manifest tags
+	OriginalDate  string         // manifest original date in YYYY-MM-DD format
+	Links         []ArtifactLink // manifest links
+	ManifestPath  string         // absolute path to manifest, if present
+	HasManifest   bool           // whether a companion manifest file was found
+	ManifestError string         // validation or parse error for the manifest, if any
 }
 
 // Scanner reads a directory for artifact files.
@@ -35,6 +42,16 @@ func (s *Scanner) Scan() ([]Artifact, error) {
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
 		return nil, fmt.Errorf("reading artifact directory: %w", err)
+	}
+
+	manifests := make(map[string]string)
+	for _, entry := range entries {
+		if entry.IsDir() || !isManifestFile(entry.Name()) {
+			continue
+		}
+		baseName := strings.TrimSuffix(entry.Name(), manifestSuffix)
+		absPath, _ := filepath.Abs(filepath.Join(s.dir, entry.Name()))
+		manifests[baseName] = absPath
 	}
 
 	var artifacts []Artifact
@@ -65,7 +82,7 @@ func (s *Scanner) Scan() ([]Artifact, error) {
 			title = name
 		}
 
-		artifacts = append(artifacts, Artifact{
+		artifact := Artifact{
 			Name:       name,
 			Filename:   entry.Name(),
 			Type:       artifactType,
@@ -73,7 +90,20 @@ func (s *Scanner) Scan() ([]Artifact, error) {
 			Size:       info.Size(),
 			ModifiedAt: info.ModTime(),
 			Path:       absPath,
-		})
+		}
+
+		if manifestPath, ok := manifests[name]; ok {
+			artifact.HasManifest = true
+			artifact.ManifestPath = manifestPath
+			manifest, err := loadManifest(manifestPath)
+			if err != nil {
+				artifact.ManifestError = err.Error()
+			} else {
+				applyManifest(&artifact, manifest)
+			}
+		}
+
+		artifacts = append(artifacts, artifact)
 	}
 	return artifacts, nil
 }
