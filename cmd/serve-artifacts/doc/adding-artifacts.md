@@ -18,10 +18,12 @@ SectionType: Tutorial
 
 The artifact server discovers files by scanning a directory at request time.
 Every `.html` or `.jsx` file in that directory becomes a servable artifact — no
-configuration files, no registration step, no rebuild.  Drop a file in, refresh
-the browser, and it appears.  This page explains the conventions your files must
-follow, what happens behind the scenes, and how to troubleshoot when an artifact
-does not render.
+configuration files, no registration step, no rebuild.  You can also place an
+optional companion manifest named `<artifact-base>.manifest.json` beside the
+artifact to add richer metadata.  Drop a file in, refresh the browser, and it
+appears.  This page explains the conventions your files must follow, what
+happens behind the scenes, and how to troubleshoot when an artifact does not
+render.
 
 ## Supported artifact types
 
@@ -56,7 +58,8 @@ Your HTML file must:
 
 The server extracts a display title from the first `<title>` tag it finds in the
 opening 4 KB of the file.  If no title is found, the filename (minus extension)
-is used instead.
+is used instead.  If a companion manifest provides `title`, that value takes
+precedence in the index and CLI output.
 
 ### Example: minimal HTML artifact
 
@@ -100,10 +103,14 @@ imports without a bundler.
 
 Your JSX file must:
 
-1. Export a single default function component using `export default function
-   ComponentName()`.  The server parses this line to determine the component
-   name for auto-mounting.  Arrow functions (`export default () => ...`) are
-   **not** supported because the server cannot extract a name from them.
+1. Export a single recognizable default component.  Supported patterns include:
+   - `export default function ComponentName() { ... }`
+   - `function ComponentName() { ... }` followed by `export default ComponentName;`
+   - `const ComponentName = ...` followed by `export default ComponentName;`
+
+   Anonymous default exports such as `export default () => ...` can still be
+   mounted, but they produce weaker derived titles and are a poor choice if you
+   want clean listings.
 
 2. Import React hooks and utilities from `"react"`:
    ```jsx
@@ -203,6 +210,49 @@ means:
 - **Modifying a file**: save the file.  If `--watch` is active, all connected
   browsers auto-reload.  Otherwise, manually refresh.
 
+## Optional companion manifests
+
+To add richer metadata, place a JSON manifest beside the artifact using this
+filename convention:
+
+```text
+my-artifact.jsx
+my-artifact.manifest.json
+```
+
+Supported fields:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `title` | string | Overrides the derived display title |
+| `description` | string | Short summary shown in the index |
+| `tags` | string[] | Search/filter metadata and tag chips |
+| `original_date` | string | Best-effort source date in `YYYY-MM-DD` form |
+| `links` | object[] | Optional related links with `label` and `url` |
+
+Example:
+
+```json
+{
+  "title": "Logic Analyzer",
+  "description": "Signal inspection tool for exploring digital traces and protocol timing.",
+  "tags": ["hardware", "signals", "analysis"],
+  "original_date": "2026-03-29",
+  "links": [
+    {
+      "label": "Original Conversation",
+      "url": "https://claude.ai/chat/..."
+    }
+  ]
+}
+```
+
+Manifest behavior:
+
+- Missing manifest: the artifact still works normally
+- Valid manifest: metadata appears in the index, search bundle, and `list` output
+- Invalid manifest: the artifact remains visible, but the manifest metadata is ignored and the parse or validation error is available in structured output
+
 ## Using the list command to inspect artifacts
 
 Before starting the server, you can inspect what the scanner finds:
@@ -218,11 +268,11 @@ serve-artifacts list --dir ./my-artifacts --output json
 serve-artifacts list --dir ./my-artifacts --type jsx
 
 # Specific fields
-serve-artifacts list --dir ./my-artifacts --fields name,type,title
+serve-artifacts list --dir ./my-artifacts --fields name,type,title,description,tags,original_date
 ```
 
 This is useful for verifying that the scanner picks up your files and extracts
-the correct titles.
+the correct titles and manifest metadata.
 
 ## Watch mode
 
@@ -244,11 +294,12 @@ The script auto-reconnects with a 2-second delay if the connection drops.
 | Problem | Cause | Solution |
 |---------|-------|----------|
 | Artifact does not appear in listing | Wrong extension or file is in a subdirectory | Only `.html`, `.htm`, and `.jsx` files in the top-level directory are discovered. Move the file or rename it. |
-| JSX artifact shows blank page | Component name mismatch | Check that you have `export default function YourName()` — the server uses this exact name for mounting. |
+| JSX artifact shows blank page | Default export shape is not recognized | Prefer a named default export or `export default Name;` for a named component. |
 | "React is not defined" in console | Missing React import | The server prepends `import React from "react"` automatically.  If you still see this, check that the import map loads correctly (requires internet). |
 | "Module not found" for third-party lib | Import map only covers React | Add the library to the import map in `pkg/server/templates/jsx-host.html`. |
 | HTML artifact missing nav button | No `</body>` tag | The nav bar is injected before `</body>`.  Add the tag. |
 | Watch mode not reloading | File changed outside watched directory | The watcher only monitors the top-level directory passed to `--dir`, not subdirectories. |
+| Manifest metadata missing | Manifest filename or JSON shape is wrong | Use `<artifact-base>.manifest.json` and validate `title`, `tags`, `original_date`, and `links`. |
 
 ## See Also
 
