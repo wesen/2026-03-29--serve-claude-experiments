@@ -10,17 +10,24 @@ DocType: reference
 Intent: long-term
 Owners: []
 RelatedFiles:
-    - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/imports/business-app.jsx:Analyzed JSX artifact structure
-    - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/imports/editor.jsx:Analyzed JSX artifact structure
-    - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/imports/QueryMac.html:Analyzed HTML artifact structure
-    - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/draft-review.html:Analyzed HTML artifact structure
-    - /home/manuel/code/wesen/corporate-headquarters/glazed/cmd/glaze/main.go:Referenced for Glazed CLI root initialization pattern
+    - Path: ../../../../../../../corporate-headquarters/glazed/cmd/glaze/main.go:Referenced for Glazed CLI root initialization pattern
+    - Path: cmd/serve-artifacts/main.go
+      Note: Glazed CLI root wiring
+    - Path: draft-review.html:Analyzed HTML artifact structure
+    - Path: imports/QueryMac.html:Analyzed HTML artifact structure
+    - Path: imports/business-app.jsx:Analyzed JSX artifact structure
+    - Path: imports/editor.jsx:Analyzed JSX artifact structure
+    - Path: pkg/artifacts/scanner.go
+      Note: Implemented artifact scanner
+    - Path: pkg/server/server.go
+      Note: Implemented HTTP server
 ExternalSources: []
-Summary: "Chronological investigation diary for SERVE-ARTIFACTS ticket"
+Summary: Chronological investigation diary for SERVE-ARTIFACTS ticket
 LastUpdated: 2026-03-29T08:37:46.664900243-04:00
-WhatFor: "Recording the research and design process for the artifact server"
-WhenToUse: "When reviewing the investigation history or continuing work"
+WhatFor: Recording the research and design process for the artifact server
+WhenToUse: When reviewing the investigation history or continuing work
 ---
+
 
 # Diary
 
@@ -214,3 +221,110 @@ Key sections and their line ranges (approximate):
 - Implementation Plan: lines 780-880
 - Testing Strategy: lines 880-990
 - Risks and Open Questions: lines 990-1050
+
+## Step 3: Full Implementation (Phases 1-3)
+
+Implemented the entire artifact server in a single pass, covering all three phases: HTML serving, JSX in-browser transformation, and Glazed CLI integration. The implementation closely followed the design doc but required fixing several incorrect Glazed import paths.
+
+### Prompt Context
+
+**User prompt (verbatim):** "Add tasks to the ticket, and then work on them one by one, comitting as you go, keeping a diary as you work."
+
+**Assistant interpretation:** Break down the design into granular tasks, implement them sequentially, and commit working code at each milestone.
+
+**Inferred user intent:** Get a working artifact server binary, with a traceable implementation history.
+
+**Commit (code):** f2b391a — "Add serve-artifacts: Go server for Claude.ai artifacts"
+
+### What I did
+
+- Initialized Go module (`github.com/go-go-golems/serve-artifacts`)
+- Added glazed v1.0.5 and cobra dependencies
+- Created `pkg/artifacts/scanner.go` — directory scanner with title extraction for HTML (`<title>` regex) and JSX (`export default function` regex)
+- Created `pkg/server/server.go` — HTTP server with three routes: index (`/`), view (`/view/{name}`), raw (`/raw/{name}`)
+- Created `pkg/server/templates/index.html` — Mac-style artifact listing page
+- Created `pkg/server/templates/jsx-host.html` — JSX host page with import map + Babel standalone
+- Created `cmd/serve-artifacts/cmds/serve.go` — plain Cobra command for running the server
+- Created `cmd/serve-artifacts/cmds/list.go` — Glazed command for structured artifact listing
+- Created `cmd/serve-artifacts/main.go` — root command with Glazed help system and logging
+
+### Why
+
+Implementing all three phases at once was pragmatic — the components are small enough that splitting into separate commits would add overhead without meaningful isolation.
+
+### What worked
+
+- The design doc's architecture translated directly into working code with minimal deviation
+- `go:embed` for templates inside `pkg/server/templates/` worked cleanly
+- Go 1.22+ `http.NewServeMux` pattern routing (`GET /view/{name}`) eliminated the need for a third-party router
+- The `list` command output was verified: table, JSON, and field filtering all work correctly
+- JSX host page successfully wraps artifacts with import map + Babel
+
+### What didn't work
+
+- **Glazed import paths were wrong.** The glazed-command-authoring skill shows package names (`fields.New`, `values.Values`) but not full import paths. I guessed 4 out of 6 wrong:
+  - `glazed/pkg/cmds/parameters/fields` → correct: `glazed/pkg/cmds/fields`
+  - `glazed/pkg/cmds/middlewares` → correct: `glazed/pkg/middlewares`
+  - `glazed/pkg/values` → correct: `glazed/pkg/cmds/values`
+  - `glazed/pkg/settings/schema` → correct: `glazed/pkg/cmds/schema`
+- Fixed by inspecting the actual module cache at `$(go env GOMODCACHE)/github.com/go-go-golems/glazed@v1.0.5/pkg`
+- Updated the glazed-command-authoring skill with a full import paths section and "common mistakes" callout
+
+### What I learned
+
+- The `go:embed` directive path is relative to the Go source file containing it, so templates must be inside the package directory (not a top-level `templates/` folder)
+- `template.JS` type is the correct way to inject raw JavaScript into Go HTML templates without escaping
+- The `</script>` escaping (`<\/script>`) is needed when injecting JSX source into a script tag
+
+### What was tricky to build
+
+The Glazed import path mismatch was the main blocker. The package names used in code (`fields`, `values`, `schema`, `middlewares`) don't map to obvious import paths — `middlewares` is at the top level of `pkg/` while `fields`, `values`, and `schema` are under `pkg/cmds/`. This asymmetry isn't documented in the skill and isn't discoverable without reading the module directory structure or the actual Go source.
+
+### What warrants a second pair of eyes
+
+- The JSX host page template needs real browser testing — `curl` confirmed the HTML structure is correct, but actual React rendering (hooks, effects, state) should be verified in a browser
+- The `</script>` escaping strategy should be tested with artifacts that contain literal `</script>` strings
+
+### What should be done in the future
+
+- Add unit tests for the scanner and handlers
+- Add watch mode with WebSocket-based live reload
+- Bundle Babel and React into the binary for offline use
+- Test with more diverse Claude artifacts
+
+### Code review instructions
+
+- Start with `pkg/artifacts/scanner.go` — the data model and scanning logic
+- Then `pkg/server/server.go` — the HTTP handlers, especially `handleView` for JSX artifacts
+- Then `cmd/serve-artifacts/main.go` — the Glazed root command wiring
+- Build and test: `go build ./cmd/serve-artifacts/ && ./serve-artifacts list --dir ./imports`
+- Manual test: `./serve-artifacts serve --dir ./imports --port 8080` then visit http://localhost:8080
+
+### Technical details
+
+**Files created:**
+```
+cmd/serve-artifacts/main.go          (32 lines) — root cobra + glazed wiring
+cmd/serve-artifacts/cmds/serve.go    (40 lines) — serve command
+cmd/serve-artifacts/cmds/list.go     (90 lines) — glazed list command
+pkg/artifacts/scanner.go             (120 lines) — scanner + title extraction
+pkg/server/server.go                 (120 lines) — HTTP server + handlers
+pkg/server/templates/index.html      (110 lines) — index page template
+pkg/server/templates/jsx-host.html   (30 lines) — JSX host page template
+```
+
+**Verified outputs:**
+```
+$ ./serve-artifacts list --dir ./imports
++--------------+------------------+------+--------------------+-------+------+
+| name         | filename         | type | title              | size  | ...  |
++--------------+------------------+------+--------------------+-------+------+
+| QueryMac     | QueryMac.html    | html | QueryMac — SQL IDE | 38875 | ...  |
+| business-app | business-app.jsx | jsx  | App                | 52461 | ...  |
+| editor       | editor.jsx       | jsx  | EditorApp          | 25874 | ...  |
++--------------+------------------+------+--------------------+-------+------+
+
+$ curl http://localhost:8091/           # → index page with 3 artifacts
+$ curl http://localhost:8091/view/QueryMac     # → HTML artifact served directly
+$ curl http://localhost:8091/view/business-app # → JSX host page with import map + Babel
+```

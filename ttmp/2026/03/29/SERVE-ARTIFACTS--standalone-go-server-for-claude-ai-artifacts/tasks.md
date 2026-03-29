@@ -4,16 +4,16 @@
 
 - [ ] Add tasks here
 
-- [ ] Phase 1: Minimal viable server (HTML only)
-- [ ] Phase 2: JSX support with in-browser transformation
-- [ ] Phase 3: Glazed CLI integration (list command)
+- [x] Phase 1: Minimal viable server (HTML only)
+- [x] Phase 2: JSX support with in-browser transformation
+- [x] Phase 3: Glazed CLI integration (list command)
 - [x] Phase 4: Polish (watch mode, styling, help docs)
-- [ ] Design document: complete
-- [ ] Initialize Go module and add dependencies
-- [ ] Create artifact scanner (pkg/artifacts/scanner.go)
-- [ ] Create HTTP server and handlers (pkg/server/)
-- [ ] Create index page template
-- [ ] Create JSX host page template
-- [ ] Create serve command (cmd/serve-artifacts/)
-- [ ] Create list command with Glazed integration
-- [ ] Test with real artifacts
+- [x] Design document: complete
+- [x] Initialize Go module and add dependencies
+- [x] Create artifact scanner (pkg/artifacts/scanner.go)
+- [x] Create HTTP server and handlers (pkg/server/)
+- [x] Create index page template
+- [x] Create JSX host page template
+- [x] Create serve command (cmd/serve-artifacts/)
+- [x] Create list command with Glazed integration
+- [x] Test with real artifacts
