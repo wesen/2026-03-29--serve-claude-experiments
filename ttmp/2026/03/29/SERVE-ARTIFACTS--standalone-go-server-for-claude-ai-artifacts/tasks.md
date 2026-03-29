@@ -20,3 +20,6 @@
 - [x] Add human-readable file sizes to index page
 - [x] Add back-to-index navigation for artifact pages
 - [x] Add file watcher with auto-reload (fsnotify + SSE)
+- [x] Fix JSX template escaping bug (html/template escapes text/babel content)
+- [ ] Add Playwright tests for all artifact types
+- [ ] Verify all 4 artifacts render correctly in browser
