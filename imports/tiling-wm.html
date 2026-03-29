@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System 1 Tiling WM</title>
+<style>
+  @font-face {
+    font-family: 'Chicago';
+    src: url('https://cdn.jsdelivr.net/gh/phjardas/fonts-chicago@master/ChicagoFLF.ttf') format('truetype');
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --white: #fff;
+    --black: #000;
+    --bg-pattern: url("data:image/svg+xml,%3Csvg width='4' height='4' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='0' y='0' width='2' height='2' fill='%23000'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%23000'/%3E%3C/svg%3E");
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    font-family: 'Chicago', 'Geneva', monospace;
+    font-size: 12px;
+    background: var(--white);
+    cursor: default;
+    image-rendering: pixelated;
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: unset;
+  }
+
+  /* ---- MENU BAR ---- */
+  #menubar {
+    height: 22px;
+    background: var(--white);
+    border-bottom: 2px solid var(--black);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    z-index: 9999;
+    position: relative;
+    user-select: none;
+  }
+
+  .menu-apple {
+    font-size: 16px;
+    font-weight: bold;
+    padding: 0 12px 0 4px;
+    cursor: pointer;
+    line-height: 22px;
+  }
+
+  .menu-item {
+    padding: 0 10px;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 22px;
+    height: 22px;
+  }
+  .menu-item:hover, .menu-item.active {
+    background: var(--black);
+    color: var(--white);
+  }
+
+  .menu-right {
+    margin-left: auto;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+  }
+
+  /* Dropdown */
+  .dropdown {
+    display: none;
+    position: absolute;
+    top: 22px;
+    background: var(--white);
+    border: 2px solid var(--black);
+    min-width: 160px;
+    z-index: 10000;
+    box-shadow: 2px 2px 0 var(--black);
+  }
+  .dropdown.open { display: block; }
+  .dropdown-item {
+    padding: 3px 16px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .dropdown-item:hover {
+    background: var(--black);
+    color: var(--white);
+  }
+  .dropdown-sep {
+    border-top: 1px solid var(--black);
+    margin: 2px 0;
+  }
+  .dropdown-item.disabled {
+    color: #999;
+    pointer-events: none;
+  }
+
+  /* ---- DESKTOP ---- */
+  #desktop {
+    width: 100%;
+    height: calc(100% - 22px);
+    position: relative;
+    overflow: hidden;
+    background: var(--white);
+  }
+
+  /* Checkerboard desktop pattern */
+  #desktop::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--bg-pattern);
+    opacity: 0.08;
+    pointer-events: none;
+  }
+
+  /* ---- TILING CONTAINER ---- */
+  #tile-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    position: relative;
+  }
+
+  /* ---- WINDOW ---- */
+  .window {
+    display: flex;
+    flex-direction: column;
+    border: 2px solid var(--black);
+    background: var(--white);
+    min-width: 100px;
+    min-height: 60px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .window.focused {
+    z-index: 10;
+  }
+
+  /* Title bar */
+  .title-bar {
+    height: 22px;
+    background: var(--white);
+    border-bottom: 2px solid var(--black);
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    cursor: grab;
+    flex-shrink: 0;
+    user-select: none;
+    position: relative;
+  }
+
+  .title-bar::before {
+    content: '';
+    position: absolute;
+    left: 24px;
+    right: 24px;
+    top: 4px;
+    bottom: 4px;
+    background: repeating-linear-gradient(
+      transparent 0px,
+      transparent 1px,
+      var(--black) 1px,
+      var(--black) 2px,
+      transparent 2px,
+      transparent 3px
+    );
+  }
+
+  .window:not(.focused) .title-bar::before {
+    display: none;
+  }
+
+  .title-text {
+    position: relative;
+    z-index: 1;
+    background: var(--white);
+    padding: 0 6px;
+    font-weight: bold;
+    font-size: 12px;
+    margin: 0 auto;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    max-width: 70%;
+    text-align: center;
+  }
+
+  .close-box {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--black);
+    background: var(--white);
+    position: relative;
+    z-index: 2;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .close-box:active::after {
+    content: '';
+    position: absolute;
+    inset: 1px;
+    background: var(--black);
+  }
+
+  .zoom-box {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--black);
+    background: var(--white);
+    position: absolute;
+    right: 4px;
+    z-index: 2;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .zoom-box::after {
+    content: '';
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    width: 6px;
+    height: 6px;
+    border: 1px solid var(--black);
+  }
+
+  /* Window body */
+  .window-body {
+    flex: 1;
+    overflow: auto;
+    padding: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  /* Scrollbar styling */
+  .window-body::-webkit-scrollbar {
+    width: 16px;
+    background: repeating-linear-gradient(
+      45deg,
+      var(--white) 0px,
+      var(--white) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    border-left: 1px solid var(--black);
+  }
+  .window-body::-webkit-scrollbar-thumb {
+    background: var(--white);
+    border: 1px solid var(--black);
+  }
+  .window-body::-webkit-scrollbar-button {
+    height: 16px;
+    background: var(--white);
+    border: 1px solid var(--black);
+  }
+
+  /* ---- TILE SPLIT ---- */
+  .tile-split {
+    display: flex;
+    width: 100%;
+    height: 100%;
+  }
+  .tile-split.horizontal { flex-direction: row; }
+  .tile-split.vertical { flex-direction: column; }
+
+  .tile-split > * {
+    flex: 1;
+  }
+
+  .tile-divider {
+    flex: 0 0 4px !important;
+    background: var(--black);
+    cursor: col-resize;
+    position: relative;
+    z-index: 5;
+  }
+  .tile-split.vertical > .tile-divider {
+    cursor: row-resize;
+  }
+
+  /* ---- SPECIFIC WINDOW CONTENT ---- */
+
+  /* Finder icons */
+  .finder-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 72px);
+    gap: 8px;
+    padding: 4px;
+  }
+  .finder-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    cursor: pointer;
+    padding: 4px;
+  }
+  .finder-icon:hover .icon-label {
+    background: var(--black);
+    color: var(--white);
+  }
+  .finder-icon svg {
+    width: 32px;
+    height: 32px;
+  }
+  .icon-label {
+    font-size: 10px;
+    text-align: center;
+    padding: 1px 3px;
+    word-break: break-word;
+    max-width: 68px;
+  }
+
+  /* Terminal */
+  .terminal-content {
+    font-family: 'Chicago', monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    padding: 4px;
+  }
+  .terminal-cursor {
+    display: inline-block;
+    width: 7px;
+    height: 12px;
+    background: var(--black);
+    animation: blink 1s steps(1) infinite;
+    vertical-align: text-bottom;
+  }
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+  .terminal-input {
+    background: transparent;
+    border: none;
+    outline: none;
+    font-family: 'Chicago', monospace;
+    font-size: 12px;
+    caret-color: transparent;
+    width: 200px;
+  }
+
+  /* About box */
+  .about-content {
+    text-align: center;
+    padding: 16px;
+  }
+  .about-content .mac-icon {
+    margin: 8px auto;
+  }
+  .about-content h2 {
+    font-size: 14px;
+    margin: 8px 0 4px;
+  }
+
+  /* Note pad */
+  .notepad {
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: none;
+    font-family: 'Chicago', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    resize: none;
+    padding: 0;
+    background: transparent;
+  }
+
+  /* Pixel art canvas */
+  .paint-area {
+    display: grid;
+    grid-template-columns: repeat(16, 12px);
+    gap: 0;
+    border: 1px solid var(--black);
+    width: fit-content;
+    margin: 0 auto;
+  }
+  .paint-pixel {
+    width: 12px;
+    height: 12px;
+    border: 0.5px solid #ccc;
+    background: var(--white);
+    cursor: crosshair;
+  }
+  .paint-pixel.filled {
+    background: var(--black);
+  }
+  .paint-toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+    justify-content: center;
+  }
+  .paint-btn {
+    font-family: 'Chicago', monospace;
+    font-size: 11px;
+    background: var(--white);
+    border: 2px solid var(--black);
+    padding: 2px 10px;
+    cursor: pointer;
+    box-shadow: 1px 1px 0 var(--black);
+  }
+  .paint-btn:active {
+    box-shadow: none;
+    transform: translate(1px,1px);
+  }
+  .paint-btn.active {
+    background: var(--black);
+    color: var(--white);
+  }
+
+  /* Status info */
+  .status-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 12px;
+    font-size: 11px;
+  }
+  .status-label { font-weight: bold; }
+
+  /* Layout switcher bar */
+  #layout-bar {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 2px;
+    background: var(--white);
+    border: 2px solid var(--black);
+    padding: 3px;
+    z-index: 100;
+    box-shadow: 2px 2px 0 var(--black);
+  }
+  .layout-btn {
+    width: 36px;
+    height: 24px;
+    border: 2px solid var(--black);
+    background: var(--white);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+  }
+  .layout-btn:hover, .layout-btn.active {
+    background: var(--black);
+    color: var(--white);
+  }
+  .layout-btn:hover svg rect,
+  .layout-btn:hover svg line,
+  .layout-btn.active svg rect,
+  .layout-btn.active svg line {
+    stroke: var(--white);
+  }
+  .layout-btn:hover svg rect[fill="black"],
+  .layout-btn.active svg rect[fill="black"] {
+    fill: var(--white);
+  }
+
+  /* Dialog */
+  .dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: transparent;
+    z-index: 20000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .dialog-box {
+    background: var(--white);
+    border: 2px solid var(--black);
+    box-shadow: 4px 4px 0 var(--black);
+    padding: 16px 24px;
+    max-width: 320px;
+    text-align: center;
+  }
+  .dialog-box p { margin: 8px 0 16px; }
+  .dialog-btn {
+    font-family: 'Chicago', monospace;
+    font-size: 12px;
+    background: var(--white);
+    border: 2px solid var(--black);
+    border-radius: 8px;
+    padding: 4px 20px;
+    cursor: pointer;
+    box-shadow: 2px 2px 0 var(--black);
+    font-weight: bold;
+  }
+  .dialog-btn:active {
+    box-shadow: none;
+    transform: translate(2px,2px);
+  }
+</style>
+</head>
+<body>
+
+<!-- MENU BAR -->
+<div id="menubar">
+  <div class="menu-apple" onclick="toggleMenu('apple-menu')">&#63743;</div>
+  <div class="menu-item" onclick="toggleMenu('file-menu')">File</div>
+  <div class="menu-item" onclick="toggleMenu('edit-menu')">Edit</div>
+  <div class="menu-item" onclick="toggleMenu('view-menu')">View</div>
+  <div class="menu-item" onclick="toggleMenu('layout-menu')">Layout</div>
+  <div class="menu-item" onclick="toggleMenu('special-menu')">Special</div>
+  <div class="menu-item menu-right" id="clock"></div>
+
+  <!-- Dropdowns -->
+  <div class="dropdown" id="apple-menu" style="left:4px">
+    <div class="dropdown-item" onclick="showAbout()">About This Macintosh...</div>
+    <div class="dropdown-sep"></div>
+    <div class="dropdown-item disabled">Control Panel</div>
+    <div class="dropdown-item disabled">Chooser</div>
+  </div>
+  <div class="dropdown" id="file-menu" style="left:44px">
+    <div class="dropdown-item" onclick="addWindow('finder')">New Finder &nbsp; &#8984;N</div>
+    <div class="dropdown-item" onclick="addWindow('notepad')">New Note &nbsp; &#8984;T</div>
+    <div class="dropdown-item" onclick="addWindow('terminal')">New Terminal</div>
+    <div class="dropdown-item" onclick="addWindow('paint')">New MacPaint</div>
+    <div class="dropdown-sep"></div>
+    <div class="dropdown-item" onclick="closeActiveWindow()">Close &nbsp; &#8984;W</div>
+  </div>
+  <div class="dropdown" id="edit-menu" style="left:88px">
+    <div class="dropdown-item disabled">Undo &nbsp; &#8984;Z</div>
+    <div class="dropdown-sep"></div>
+    <div class="dropdown-item disabled">Cut &nbsp; &#8984;X</div>
+    <div class="dropdown-item disabled">Copy &nbsp; &#8984;C</div>
+    <div class="dropdown-item disabled">Paste &nbsp; &#8984;V</div>
+  </div>
+  <div class="dropdown" id="view-menu" style="left:130px">
+    <div class="dropdown-item disabled">by Icon</div>
+    <div class="dropdown-item disabled">by Name</div>
+    <div class="dropdown-item disabled">by Date</div>
+  </div>
+  <div class="dropdown" id="layout-menu" style="left:180px">
+    <div class="dropdown-item" onclick="setLayout('single')">Single &nbsp; &#8984;1</div>
+    <div class="dropdown-item" onclick="setLayout('hsplit')">Split H &nbsp; &#8984;2</div>
+    <div class="dropdown-item" onclick="setLayout('vsplit')">Split V &nbsp; &#8984;3</div>
+    <div class="dropdown-item" onclick="setLayout('grid')">Grid &nbsp; &#8984;4</div>
+    <div class="dropdown-item" onclick="setLayout('triple')">Triple &nbsp; &#8984;5</div>
+  </div>
+  <div class="dropdown" id="special-menu" style="left:240px">
+    <div class="dropdown-item disabled">Clean Up Desktop</div>
+    <div class="dropdown-item disabled">Empty Trash</div>
+    <div class="dropdown-item" onclick="resetAll()">Restart</div>
+  </div>
+</div>
+
+<!-- DESKTOP -->
+<div id="desktop">
+  <div id="tile-container"></div>
+
+  <!-- Layout switcher -->
+  <div id="layout-bar">
+    <div class="layout-btn active" data-layout="single" onclick="setLayout('single')" title="Single">
+      <svg width="28" height="16" viewBox="0 0 28 16"><rect x="1" y="1" width="26" height="14" fill="none" stroke="black" stroke-width="1.5"/></svg>
+    </div>
+    <div class="layout-btn" data-layout="hsplit" onclick="setLayout('hsplit')" title="Horizontal Split">
+      <svg width="28" height="16" viewBox="0 0 28 16"><rect x="1" y="1" width="12" height="14" fill="none" stroke="black" stroke-width="1.5"/><rect x="15" y="1" width="12" height="14" fill="none" stroke="black" stroke-width="1.5"/></svg>
+    </div>
+    <div class="layout-btn" data-layout="vsplit" onclick="setLayout('vsplit')" title="Vertical Split">
+      <svg width="28" height="16" viewBox="0 0 28 16"><rect x="1" y="1" width="26" height="6" fill="none" stroke="black" stroke-width="1.5"/><rect x="1" y="9" width="26" height="6" fill="none" stroke="black" stroke-width="1.5"/></svg>
+    </div>
+    <div class="layout-btn" data-layout="grid" onclick="setLayout('grid')" title="Grid">
+      <svg width="28" height="16" viewBox="0 0 28 16"><rect x="1" y="1" width="12" height="6" fill="none" stroke="black" stroke-width="1.5"/><rect x="15" y="1" width="12" height="6" fill="none" stroke="black" stroke-width="1.5"/><rect x="1" y="9" width="12" height="6" fill="none" stroke="black" stroke-width="1.5"/><rect x="15" y="9" width="12" height="6" fill="none" stroke="black" stroke-width="1.5"/></svg>
+    </div>
+    <div class="layout-btn" data-layout="triple" onclick="setLayout('triple')" title="Triple">
+      <svg width="28" height="16" viewBox="0 0 28 16"><rect x="1" y="1" width="14" height="14" fill="none" stroke="black" stroke-width="1.5"/><rect x="17" y="1" width="10" height="6" fill="none" stroke="black" stroke-width="1.5"/><rect x="17" y="9" width="10" height="6" fill="none" stroke="black" stroke-width="1.5"/></svg>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---- STATE ----
+  let windows = [];
+  let activeWindowId = null;
+  let currentLayout = 'hsplit';
+  let windowCounter = 0;
+  let paintMode = 'draw';
+  let isPainting = false;
+
+  // ---- CLOCK ----
+  function updateClock() {
+    const now = new Date();
+    let h = now.getHours(), m = now.getMinutes();
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    document.getElementById('clock').textContent =
+      h + ':' + String(m).padStart(2,'0') + ' ' + ampm;
+  }
+  setInterval(updateClock, 10000);
+  updateClock();
+
+  // ---- MENU ----
+  function toggleMenu(id) {
+    const all = document.querySelectorAll('.dropdown');
+    const el = document.getElementById(id);
+    const wasOpen = el.classList.contains('open');
+    all.forEach(d => d.classList.remove('open'));
+    if (!wasOpen) el.classList.add('open');
+  }
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.menu-item') && !e.target.closest('.menu-apple') && !e.target.closest('.dropdown')) {
+      document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('open'));
+    }
+  });
+
+  // ---- ICONS (pixel art SVGs) ----
+  const icons = {
+    folder: `<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="2" y="8" width="28" height="20" fill="white" stroke="black" stroke-width="2"/>
+      <rect x="2" y="6" width="12" height="6" fill="white" stroke="black" stroke-width="2"/>
+      <line x1="2" y1="12" x2="30" y2="12" stroke="black" stroke-width="1"/>
+    </svg>`,
+    doc: `<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="6" y="2" width="18" height="28" fill="white" stroke="black" stroke-width="2"/>
+      <line x1="6" y1="8" x2="24" y2="8" stroke="black" stroke-width="1"/>
+      <line x1="10" y1="13" x2="22" y2="13" stroke="black" stroke-width="1"/>
+      <line x1="10" y1="17" x2="22" y2="17" stroke="black" stroke-width="1"/>
+      <line x1="10" y1="21" x2="18" y2="21" stroke="black" stroke-width="1"/>
+    </svg>`,
+    app: `<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="4" y="4" width="24" height="24" fill="white" stroke="black" stroke-width="2"/>
+      <rect x="8" y="4" width="16" height="6" fill="black"/>
+      <rect x="12" y="14" width="8" height="8" fill="black"/>
+    </svg>`,
+    trash: `<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="8" y="8" width="16" height="20" fill="white" stroke="black" stroke-width="2"/>
+      <rect x="6" y="6" width="20" height="4" fill="white" stroke="black" stroke-width="2"/>
+      <rect x="12" y="3" width="8" height="4" fill="white" stroke="black" stroke-width="2"/>
+      <line x1="12" y1="12" x2="12" y2="24" stroke="black" stroke-width="1.5"/>
+      <line x1="16" y1="12" x2="16" y2="24" stroke="black" stroke-width="1.5"/>
+      <line x1="20" y1="12" x2="20" y2="24" stroke="black" stroke-width="1.5"/>
+    </svg>`,
+    mac: `<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="6" y="2" width="20" height="22" rx="2" fill="white" stroke="black" stroke-width="2"/>
+      <rect x="9" y="5" width="14" height="10" fill="black"/>
+      <rect x="14" y="24" width="4" height="3" fill="black"/>
+      <rect x="10" y="27" width="12" height="2" fill="black"/>
+    </svg>`
+  };
+
+  // ---- WINDOW CONTENT GENERATORS ----
+  function makeFinderContent() {
+    const items = [
+      { icon: 'folder', name: 'System Folder' },
+      { icon: 'folder', name: 'Documents' },
+      { icon: 'folder', name: 'Applications' },
+      { icon: 'app', name: 'MacWrite' },
+      { icon: 'app', name: 'MacPaint' },
+      { icon: 'doc', name: 'ReadMe' },
+      { icon: 'doc', name: 'Notes.txt' },
+      { icon: 'trash', name: 'Trash' },
+    ];
+    return `<div class="finder-grid">${items.map(it =>
+      `<div class="finder-icon"><div>${icons[it.icon]}</div><div class="icon-label">${it.name}</div></div>`
+    ).join('')}</div>`;
+  }
+
+  function makeTerminalContent(id) {
+    return `<div class="terminal-content" id="term-${id}">Welcome to Macintosh Terminal v1.0
+© 1984 Apple Computer, Inc.
+
+Macintosh:~ $ <span class="terminal-cursor"></span></div>`;
+  }
+
+  function makeNotepadContent() {
+    return `<textarea class="notepad" placeholder="Type your notes here..." spellcheck="false">Welcome to the Macintosh notepad.
+
+You can type freely here. This window
+tiles alongside your other applications.
+
+Try switching layouts with the bar below
+or from the Layout menu.</textarea>`;
+  }
+
+  function makePaintContent(id) {
+    let pixels = '';
+    for (let i = 0; i < 256; i++) {
+      pixels += `<div class="paint-pixel" data-i="${i}" 
+        onmousedown="startPaint(event)" 
+        onmouseover="doPaint(event)"
+        onmouseup="stopPaint()"></div>`;
+    }
+    return `
+      <div class="paint-toolbar">
+        <button class="paint-btn active" data-tool="draw" onclick="setPaintTool(this,'draw')">Draw</button>
+        <button class="paint-btn" data-tool="erase" onclick="setPaintTool(this,'erase')">Erase</button>
+        <button class="paint-btn" onclick="clearCanvas('${id}')">Clear</button>
+      </div>
+      <div class="paint-area" id="canvas-${id}">${pixels}</div>`;
+  }
+
+  function makeStatusContent() {
+    const memKB = Math.floor(Math.random() * 64 + 64);
+    return `<div class="about-content">
+      <div class="mac-icon">${icons.mac}</div>
+      <h2>About This Macintosh</h2>
+      <p style="font-size:11px; margin:6px 0">System 1.0 &middot; Finder 1.0</p>
+      <div style="border-top:1px solid black; margin:8px 0"></div>
+      <div class="status-grid" style="text-align:left;max-width:200px;margin:0 auto">
+        <span class="status-label">Memory:</span><span>${memKB}K total</span>
+        <span class="status-label">Windows:</span><span>${windows.length} open</span>
+        <span class="status-label">Layout:</span><span>${currentLayout}</span>
+        <span class="status-label">Built:</span><span>January 24, 1984</span>
+      </div>
+    </div>`;
+  }
+
+  // ---- PAINT TOOLS ----
+  function setPaintTool(btn, tool) {
+    paintMode = tool;
+    btn.closest('.paint-toolbar').querySelectorAll('.paint-btn[data-tool]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  function startPaint(e) {
+    isPainting = true;
+    togglePixel(e.target);
+  }
+  function doPaint(e) {
+    if (isPainting) togglePixel(e.target);
+  }
+  function stopPaint() { isPainting = false; }
+  document.addEventListener('mouseup', stopPaint);
+  function togglePixel(el) {
+    if (!el.classList.contains('paint-pixel')) return;
+    if (paintMode === 'draw') el.classList.add('filled');
+    else el.classList.remove('filled');
+  }
+  function clearCanvas(id) {
+    document.querySelectorAll(`#canvas-${id} .paint-pixel`).forEach(p => p.classList.remove('filled'));
+  }
+
+  // ---- WINDOW MANAGEMENT ----
+  function createWindowObj(type) {
+    const id = 'win-' + (++windowCounter);
+    const titles = {
+      finder: 'Macintosh HD',
+      terminal: 'Terminal',
+      notepad: 'Untitled Note',
+      paint: 'MacPaint',
+      about: 'About This Macintosh'
+    };
+    return { id, type, title: titles[type] || type };
+  }
+
+  function renderWindowHTML(w) {
+    let body = '';
+    switch (w.type) {
+      case 'finder': body = makeFinderContent(); break;
+      case 'terminal': body = makeTerminalContent(w.id); break;
+      case 'notepad': body = makeNotepadContent(); break;
+      case 'paint': body = makePaintContent(w.id); break;
+      case 'about': body = makeStatusContent(); break;
+    }
+    return `
+    <div class="window ${w.id === activeWindowId ? 'focused' : ''}" id="${w.id}" onmousedown="focusWindow('${w.id}')">
+      <div class="title-bar">
+        <div class="close-box" onclick="removeWindow('${w.id}')"></div>
+        <div class="title-text">${w.title}</div>
+        <div class="zoom-box" onclick="toggleMaximize('${w.id}')"></div>
+      </div>
+      <div class="window-body">${body}</div>
+    </div>`;
+  }
+
+  // ---- LAYOUT ENGINE ----
+  function buildLayout() {
+    const container = document.getElementById('tile-container');
+    const count = windows.length;
+
+    if (count === 0) {
+      container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;flex-direction:column;gap:12px;opacity:0.4">
+        ${icons.mac}
+        <div style="font-family:Chicago,monospace;font-size:12px">Open a window from the File menu</div>
+      </div>`;
+      return;
+    }
+
+    let html = '';
+
+    if (currentLayout === 'single') {
+      // Show only the active window
+      const w = windows.find(w => w.id === activeWindowId) || windows[0];
+      html = renderWindowHTML(w);
+    }
+    else if (currentLayout === 'hsplit') {
+      if (count === 1) {
+        html = renderWindowHTML(windows[0]);
+      } else {
+        html = `<div class="tile-split horizontal">
+          ${renderWindowHTML(windows[0])}
+          <div class="tile-divider"></div>
+          ${renderWindowHTML(windows[1])}
+        </div>`;
+        // overflow goes to second pane
+        for (let i = 2; i < count; i++) {
+          // stack extras in right pane, but for simplicity we just show first 2
+        }
+      }
+    }
+    else if (currentLayout === 'vsplit') {
+      if (count === 1) {
+        html = renderWindowHTML(windows[0]);
+      } else {
+        html = `<div class="tile-split vertical">
+          ${renderWindowHTML(windows[0])}
+          <div class="tile-divider"></div>
+          ${renderWindowHTML(windows[1])}
+        </div>`;
+      }
+    }
+    else if (currentLayout === 'grid') {
+      if (count === 1) {
+        html = renderWindowHTML(windows[0]);
+      } else if (count === 2) {
+        html = `<div class="tile-split horizontal">
+          ${renderWindowHTML(windows[0])}
+          <div class="tile-divider"></div>
+          ${renderWindowHTML(windows[1])}
+        </div>`;
+      } else if (count === 3) {
+        html = `<div class="tile-split horizontal">
+          ${renderWindowHTML(windows[0])}
+          <div class="tile-divider"></div>
+          <div class="tile-split vertical">
+            ${renderWindowHTML(windows[1])}
+            <div class="tile-divider"></div>
+            ${renderWindowHTML(windows[2])}
+          </div>
+        </div>`;
+      } else {
+        html = `<div class="tile-split vertical">
+          <div class="tile-split horizontal">
+            ${renderWindowHTML(windows[0])}
+            <div class="tile-divider"></div>
+            ${renderWindowHTML(windows[1])}
+          </div>
+          <div class="tile-divider"></div>
+          <div class="tile-split horizontal">
+            ${renderWindowHTML(windows[2])}
+            <div class="tile-divider"></div>
+            ${renderWindowHTML(windows[3] || windows[0])}
+          </div>
+        </div>`;
+      }
+    }
+    else if (currentLayout === 'triple') {
+      if (count === 1) {
+        html = renderWindowHTML(windows[0]);
+      } else if (count === 2) {
+        html = `<div class="tile-split horizontal">
+          ${renderWindowHTML(windows[0])}
+          <div class="tile-divider"></div>
+          ${renderWindowHTML(windows[1])}
+        </div>`;
+      } else {
+        html = `<div class="tile-split horizontal">
+          <div style="flex:1.4">${renderWindowHTML(windows[0])}</div>
+          <div class="tile-divider"></div>
+          <div class="tile-split vertical" style="flex:1">
+            ${renderWindowHTML(windows[1])}
+            <div class="tile-divider"></div>
+            ${renderWindowHTML(windows[2])}
+          </div>
+        </div>`;
+      }
+    }
+
+    container.innerHTML = html;
+
+    // Fix window sizes to fill containers
+    container.querySelectorAll('.window').forEach(w => {
+      w.style.width = '100%';
+      w.style.height = '100%';
+    });
+
+    updateLayoutButtons();
+  }
+
+  function updateLayoutButtons() {
+    document.querySelectorAll('.layout-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.layout === currentLayout);
+    });
+  }
+
+  // ---- ACTIONS ----
+  function addWindow(type) {
+    closeMenus();
+    if (windows.length >= 4) {
+      showDialog('Desktop is full. Close a window first.');
+      return;
+    }
+    const w = createWindowObj(type);
+    windows.push(w);
+    activeWindowId = w.id;
+    // Auto-upgrade layout
+    if (windows.length === 2 && currentLayout === 'single') currentLayout = 'hsplit';
+    if (windows.length === 3 && (currentLayout === 'single' || currentLayout === 'hsplit' || currentLayout === 'vsplit')) currentLayout = 'triple';
+    if (windows.length === 4) currentLayout = 'grid';
+    buildLayout();
+  }
+
+  function removeWindow(id) {
+    windows = windows.filter(w => w.id !== id);
+    if (activeWindowId === id) activeWindowId = windows.length ? windows[0].id : null;
+    if (windows.length <= 1) currentLayout = 'single';
+    else if (windows.length === 2 && (currentLayout === 'grid' || currentLayout === 'triple')) currentLayout = 'hsplit';
+    else if (windows.length === 3 && currentLayout === 'grid') currentLayout = 'triple';
+    buildLayout();
+  }
+
+  function closeActiveWindow() {
+    closeMenus();
+    if (activeWindowId) removeWindow(activeWindowId);
+  }
+
+  function focusWindow(id) {
+    activeWindowId = id;
+    document.querySelectorAll('.window').forEach(w => w.classList.remove('focused'));
+    const el = document.getElementById(id);
+    if (el) el.classList.add('focused');
+  }
+
+  function toggleMaximize(id) {
+    if (currentLayout !== 'single') {
+      currentLayout = 'single';
+      activeWindowId = id;
+    } else if (windows.length > 1) {
+      currentLayout = windows.length === 2 ? 'hsplit' : windows.length === 3 ? 'triple' : 'grid';
+    }
+    buildLayout();
+  }
+
+  function setLayout(layout) {
+    closeMenus();
+    currentLayout = layout;
+    buildLayout();
+  }
+
+  function showAbout() {
+    closeMenus();
+    addWindow('about');
+  }
+
+  function resetAll() {
+    closeMenus();
+    windows = [];
+    activeWindowId = null;
+    windowCounter = 0;
+    currentLayout = 'hsplit';
+    buildLayout();
+    // Reopen defaults
+    setTimeout(() => addWindow('finder'), 100);
+    setTimeout(() => addWindow('terminal'), 200);
+  }
+
+  function closeMenus() {
+    document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('open'));
+  }
+
+  function showDialog(msg) {
+    const overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+    overlay.innerHTML = `<div class="dialog-box"><p>${msg}</p><button class="dialog-btn" onclick="this.closest('.dialog-overlay').remove()">OK</button></div>`;
+    document.body.appendChild(overlay);
+  }
+
+  // ---- KEYBOARD SHORTCUTS ----
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey) {
+      switch(e.key) {
+        case 'n': e.preventDefault(); addWindow('finder'); break;
+        case 't': e.preventDefault(); addWindow('notepad'); break;
+        case 'w': e.preventDefault(); closeActiveWindow(); break;
+        case '1': e.preventDefault(); setLayout('single'); break;
+        case '2': e.preventDefault(); setLayout('hsplit'); break;
+        case '3': e.preventDefault(); setLayout('vsplit'); break;
+        case '4': e.preventDefault(); setLayout('grid'); break;
+        case '5': e.preventDefault(); setLayout('triple'); break;
+      }
+    }
+  });
+
+  // ---- DIVIDER DRAG ----
+  document.addEventListener('mousedown', e => {
+    if (!e.target.classList.contains('tile-divider')) return;
+    const divider = e.target;
+    const parent = divider.parentElement;
+    const isH = parent.classList.contains('horizontal');
+    const prev = divider.previousElementSibling;
+    const next = divider.nextElementSibling;
+    if (!prev || !next) return;
+
+    const parentRect = parent.getBoundingClientRect();
+    const startX = e.clientX, startY = e.clientY;
+    const prevFlex = parseFloat(getComputedStyle(prev).flexGrow) || 1;
+    const nextFlex = parseFloat(getComputedStyle(next).flexGrow) || 1;
+    const total = prevFlex + nextFlex;
+
+    function onMove(ev) {
+      const delta = isH
+        ? (ev.clientX - startX) / parentRect.width
+        : (ev.clientY - startY) / parentRect.height;
+      const newPrev = Math.max(0.15, prevFlex + delta * total);
+      const newNext = Math.max(0.15, nextFlex - delta * total);
+      prev.style.flex = newPrev;
+      next.style.flex = newNext;
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    e.preventDefault();
+  });
+
+  // ---- INIT ----
+  addWindow('finder');
+  addWindow('terminal');
+</script>
+</body>
+</html>

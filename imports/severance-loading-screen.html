@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Severance Loading Screen</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Courier New', monospace;
+    }
+    
+    body {
+      background-color: #051b2e;
+      color: #8ecae6;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    
+    .container {
+      width: 90%;
+      max-width: 800px;
+      text-align: center;
+    }
+    
+    .header {
+      margin-bottom: 30px;
+    }
+    
+    .header h1 {
+      font-size: 36px;
+      letter-spacing: 4px;
+      margin-bottom: 10px;
+      font-family: 'Arial', sans-serif;
+      font-weight: 300;
+    }
+    
+    .header p {
+      font-size: 18px;
+      opacity: 0.8;
+      margin-bottom: 5px;
+      font-family: 'Arial', sans-serif;
+    }
+    
+    .employee-info {
+      display: flex;
+      justify-content: space-between;
+      border: 1px solid #8ecae6;
+      border-radius: 5px;
+      padding: 15px;
+      margin-bottom: 30px;
+      text-align: left;
+      background-color: rgba(142, 202, 230, 0.1);
+    }
+    
+    .employee-info div {
+      flex: 1;
+    }
+    
+    .timer-display {
+      font-size: 72px;
+      margin: 30px 0;
+      font-weight: bold;
+      letter-spacing: 5px;
+      font-family: 'Arial', sans-serif;
+      color: #cae9ff;
+    }
+    
+    .message {
+      font-size: 24px;
+      margin-bottom: 20px;
+      height: 30px;
+      font-family: 'Arial', sans-serif;
+    }
+    
+    .buttons {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-top: 20px;
+    }
+    
+    .btn {
+      background-color: rgba(142, 202, 230, 0.1);
+      border: 1px solid #8ecae6;
+      color: #8ecae6;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.3s;
+      border-radius: 20px;
+      font-family: 'Arial', sans-serif;
+    }
+    
+    .btn:hover {
+      background-color: #8ecae6;
+      color: #051b2e;
+    }
+    
+    .progress-bar {
+      width: 100%;
+      height: 10px;
+      background-color: rgba(142, 202, 230, 0.1);
+      border: 1px solid #8ecae6;
+      margin-top: 20px;
+      border-radius: 10px;
+    }
+    
+    .progress {
+      height: 100%;
+      width: 0%;
+      background-color: #8ecae6;
+      transition: width 1s linear;
+      border-radius: 10px;
+    }
+    
+    .loading-dots::after {
+      content: '';
+      animation: dots 1.5s infinite;
+    }
+    
+    @keyframes dots {
+      0%, 20% { content: ''; }
+      40% { content: '.'; }
+      60% { content: '..'; }
+      80% { content: '...'; }
+    }
+    
+    .flicker {
+      animation: flicker 0.3s infinite alternate;
+    }
+    
+    @keyframes flicker {
+      0% { opacity: 0.8; }
+      100% { opacity: 1; }
+    }
+    
+    .scan-line {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background-color: rgba(142, 202, 230, 0.3);
+      animation: scan 5s linear infinite;
+    }
+    
+    @keyframes scan {
+      0% { top: 0; }
+      100% { top: 100%; }
+    }
+    
+    .reminder {
+      margin: 30px 0;
+      padding: 10px;
+      border: 1px dashed #33cc33;
+      font-size: 18px;
+    }
+    
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="scan-line"></div>
+  
+  <div class="container">
+    <div class="header">
+      <h1 class="flicker">LUMON INDUSTRIES</h1>
+      <p>MACRODATA REFINEMENT DIVISION</p>
+      <p>DEVELOPER WORK PROTOCOL</p>
+    </div>
+    
+    <div class="employee-info">
+      <div>
+        <p>OPERATOR: STREAMER</p>
+        <p>UNIT: PROGRAMMING</p>
+      </div>
+      <div>
+        <p>STATUS: BREAK CYCLE</p>
+        <p>REQUIREMENT: HYDRATION & REST</p>
+      </div>
+    </div>
+    
+    <div class="reminder">
+      <p>NOTICE: Continuous operation without breaks reduces efficiency by 43%</p>
+      <p>STANDARD PROCEDURE: Maintain adequate hydration levels</p>
+    </div>
+    
+    <div class="message loading-dots">BREAK PROTOCOL INITIATED</div>
+    
+    <div class="timer-display" id="timer">05:00</div>
+    
+    <div class="progress-bar">
+      <div class="progress" id="progress"></div>
+    </div>
+    
+    <div class="buttons">
+      <button class="btn" data-time="300">5 MIN</button>
+      <button class="btn" data-time="600">10 MIN</button>
+      <button class="btn" data-time="900">15 MIN</button>
+      <button class="btn" data-time="1800">30 MIN</button>
+      <button class="btn" id="custom-btn">CUSTOM</button>
+      <button class="btn hidden" id="start-btn">START</button>
+      <button class="btn hidden" id="pause-btn">PAUSE</button>
+      <button class="btn hidden" id="reset-btn">RESET</button>
+    </div>
+    
+    <div class="custom-input hidden" id="custom-input">
+      <input type="number" id="minutes-input" min="1" max="60" value="5" style="background: black; color: #33cc33; border: 1px solid #33cc33; padding: 5px; width: 60px; text-align: center; margin: 20px 5px;">
+      <label for="minutes-input">MINUTES</label>
+      <button class="btn" id="confirm-custom">CONFIRM</button>
+    </div>
+  </div>
+  
+  <script>
+    let timer;
+    let totalSeconds = 300; // Default 5 minutes
+    let remainingSeconds = totalSeconds;
+    let isRunning = false;
+    
+    const timerDisplay = document.getElementById('timer');
+    const progressBar = document.getElementById('progress');
+    const message = document.querySelector('.message');
+    const startBtn = document.getElementById('start-btn');
+    const pauseBtn = document.getElementById('pause-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const customBtn = document.getElementById('custom-btn');
+    const customInput = document.getElementById('custom-input');
+    const confirmCustomBtn = document.getElementById('confirm-custom');
+    const minutesInput = document.getElementById('minutes-input');
+    
+    // Set timer buttons
+    document.querySelectorAll('.btn[data-time]').forEach(button => {
+      button.addEventListener('click', () => {
+        totalSeconds = parseInt(button.dataset.time);
+        resetTimer();
+        startTimer();
+      });
+    });
+    
+    // Custom timer input
+    customBtn.addEventListener('click', () => {
+      customInput.classList.remove('hidden');
+      customBtn.classList.add('hidden');
+      startBtn.classList.remove('hidden');
+      document.querySelectorAll('.btn[data-time]').forEach(btn => {
+        btn.classList.add('hidden');
+      });
+    });
+    
+    confirmCustomBtn.addEventListener('click', () => {
+      const minutes = parseInt(minutesInput.value) || 5;
+      totalSeconds = minutes * 60;
+      resetTimer();
+      startTimer();
+      customInput.classList.add('hidden');
+      document.querySelectorAll('.btn[data-time]').forEach(btn => {
+        btn.classList.remove('hidden');
+      });
+      customBtn.classList.remove('hidden');
+      startBtn.classList.add('hidden');
+      pauseBtn.classList.remove('hidden');
+      resetBtn.classList.remove('hidden');
+    });
+    
+    // Control buttons
+    startBtn.addEventListener('click', () => {
+      customInput.classList.add('hidden');
+      document.querySelectorAll('.btn[data-time]').forEach(btn => {
+        btn.classList.remove('hidden');
+      });
+      customBtn.classList.remove('hidden');
+      startBtn.classList.add('hidden');
+      pauseBtn.classList.remove('hidden');
+      resetBtn.classList.remove('hidden');
+      startTimer();
+    });
+    
+    pauseBtn.addEventListener('click', () => {
+      if (isRunning) {
+        clearInterval(timer);
+        isRunning = false;
+        message.innerHTML = "BREAK PAUSED";
+        pauseBtn.textContent = "RESUME";
+      } else {
+        startTimer();
+        pauseBtn.textContent = "PAUSE";
+      }
+    });
+    
+    resetBtn.addEventListener('click', () => {
+      resetTimer();
+      pauseBtn.classList.add('hidden');
+      resetBtn.classList.add('hidden');
+      document.querySelectorAll('.btn[data-time]').forEach(btn => {
+        btn.classList.remove('hidden');
+      });
+      customBtn.classList.remove('hidden');
+    });
+    
+    function startTimer() {
+      if (isRunning) return;
+      
+      isRunning = true;
+      message.innerHTML = "BREAK IN PROGRESS<span class='loading-dots'></span>";
+      
+      document.querySelectorAll('.btn[data-time]').forEach(btn => {
+        btn.classList.add('hidden');
+      });
+      customBtn.classList.add('hidden');
+      pauseBtn.classList.remove('hidden');
+      resetBtn.classList.remove('hidden');
+      
+      timer = setInterval(() => {
+        remainingSeconds--;
+        
+        if (remainingSeconds <= 0) {
+          clearInterval(timer);
+          message.innerHTML = "BREAK COMPLETE - RETURN TO WORK";
+          message.classList.add('flicker');
+          timerDisplay.classList.add('flicker');
+          pauseBtn.classList.add('hidden');
+          resetBtn.classList.remove('hidden');
+          
+          // Play notification sound
+          const audio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAAAAAAAAAAAAAAAgAA==');
+          audio.play();
+          
+          setTimeout(() => {
+            pauseBtn.classList.add('hidden');
+            resetBtn.classList.add('hidden');
+            document.querySelectorAll('.btn[data-time]').forEach(btn => {
+              btn.classList.remove('hidden');
+            });
+            customBtn.classList.remove('hidden');
+          }, 5000);
+          
+          return;
+        }
+        
+        updateDisplay();
+      }, 1000);
+    }
+    
+    function resetTimer() {
+      clearInterval(timer);
+      isRunning = false;
+      remainingSeconds = totalSeconds;
+      message.innerHTML = "BREAK PROTOCOL INITIATED<span class='loading-dots'></span>";
+      message.classList.remove('flicker');
+      timerDisplay.classList.remove('flicker');
+      updateDisplay();
+    }
+    
+    function updateDisplay() {
+      const minutes = Math.floor(remainingSeconds / 60);
+      const seconds = remainingSeconds % 60;
+      
+      timerDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      
+      // Update progress bar
+      const progress = ((totalSeconds - remainingSeconds) / totalSeconds) * 100;
+      progressBar.style.width = `${progress}%`;
+      
+      // Update reminder messages based on time
+      const reminderElem = document.querySelector('.reminder');
+      if (remainingSeconds < 30) {
+        reminderElem.innerHTML = '<p>PREPARE TO RESUME PROGRAMMING OPERATIONS</p><p>CONFIRM HYDRATION COMPLETED</p>';
+        reminderElem.classList.add('flicker');
+      } else if (remainingSeconds < totalSeconds / 2) {
+        reminderElem.innerHTML = '<p>HYDRATION VERIFICATION: Please confirm water intake</p><p>RECOMMENDED ACTION: Complete stretching sequence</p>';
+        reminderElem.classList.remove('flicker');
+      } else {
+        reminderElem.innerHTML = '<p>NOTICE: Continuous operation without breaks reduces efficiency by 43%</p><p>STANDARD PROCEDURE: Maintain adequate hydration levels</p>';
+        reminderElem.classList.remove('flicker');
+      }
+    }
+    
+    // Initialize display
+    resetTimer();
+  </script>
+</body>
+</html>

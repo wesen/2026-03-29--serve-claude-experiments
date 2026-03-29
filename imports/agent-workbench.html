@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Workbench 1.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --f:'Share Tech Mono','Courier New',monospace;
+  --ca:#6b2e0f;
+  --ct:#175c20;
+  --cr:#0c2860;
+  --ch:#5a0e48;
+  --cw:#aa1f1f;
+}
+html,body{height:100%;overflow:hidden;}
+body{font-family:var(--f);background:#9e9e9e;
+  background-image:
+    repeating-linear-gradient(0deg,rgba(0,0,0,.14) 0,rgba(0,0,0,.14) 1px,transparent 1px,transparent 9px),
+    repeating-linear-gradient(90deg,rgba(0,0,0,.14) 0,rgba(0,0,0,.14) 1px,transparent 1px,transparent 9px);
+  display:flex;flex-direction:column;height:100vh;}
+
+/* Menu bar */
+.mb{height:22px;flex-shrink:0;background:#fff;border-bottom:1.5px solid #000;display:flex;align-items:center;user-select:none;font-size:13px;}
+.mb-a{padding:0 10px;border-right:1.5px solid #000;height:100%;display:flex;align-items:center;font-size:15px;font-weight:bold;}
+.mb-i{padding:0 9px;height:100%;display:flex;align-items:center;cursor:default;}
+.mb-i:hover{background:#000;color:#fff;}
+.mb-r{margin-left:auto;font-size:11px;color:#777;padding:0 8px;}
+
+/* Workspace */
+.ws{flex:1;display:grid;grid-template-columns:278px 1fr 256px;gap:6px;padding:6px;min-height:0;overflow:hidden;}
+
+/* Window chrome */
+.win{display:flex;flex-direction:column;background:#fff;border:1.5px solid #000;box-shadow:2px 2px 0 #000;min-height:0;overflow:hidden;}
+.wtb{flex-shrink:0;height:21px;background:repeating-linear-gradient(to bottom,#000 0px,#000 1px,#fff 1px,#fff 2px);display:flex;align-items:center;justify-content:center;position:relative;user-select:none;}
+.wtb-t{font-size:12px;font-weight:bold;background:#fff;padding:0 8px;z-index:1;white-space:nowrap;}
+.cb{position:absolute;left:4px;width:14px;height:14px;border:1.5px solid #000;background:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;cursor:pointer;z-index:2;}
+.cb:hover{background:#000;color:#fff;}
+
+/* Tabs */
+.tabs{flex-shrink:0;display:flex;border-bottom:1.5px solid #000;background:#e2e2e2;}
+.tab{padding:2px 11px;font-family:var(--f);font-size:12px;cursor:pointer;border-right:1px solid #aaa;user-select:none;}
+.tab.on{background:#fff;font-weight:bold;border-bottom:1.5px solid #fff;margin-bottom:-1.5px;}
+.tab:hover:not(.on){background:#d4d4d4;}
+
+/* Scrollable body */
+.wb{flex:1;overflow-y:auto;overflow-x:hidden;padding:7px;min-height:0;}
+.wb::-webkit-scrollbar{width:15px;}
+.wb::-webkit-scrollbar-track{background:#fff;border-left:1.5px solid #000;}
+.wb::-webkit-scrollbar-thumb{background:repeating-linear-gradient(45deg,#000 0,#000 1px,#fff 1px,#fff 4px);border:1.5px solid #000;}
+
+/* Form elements */
+label.lbl{font-size:12px;display:block;margin-bottom:2px;}
+textarea.ta{width:100%;border:1.5px solid #000;padding:3px 5px;font-family:var(--f);font-size:12px;resize:none;background:#fff;outline:none;line-height:1.45;}
+textarea.ta:focus{outline:1.5px solid #000;}
+input.inp{border:1.5px solid #000;padding:1px 5px;font-family:var(--f);font-size:12px;background:#fff;outline:none;}
+input.inp:focus{outline:1.5px solid #000;}
+button.btn{border:1.5px solid #000;padding:2px 10px;font-family:var(--f);font-size:13px;background:#fff;cursor:pointer;box-shadow:1.5px 1.5px 0 #000;user-select:none;}
+button.btn:active{box-shadow:none;transform:translate(1.5px,1.5px);background:#000;color:#fff;}
+button.btn:hover:not(:active){background:#f5f5f5;}
+button.btn-p{border-width:2.5px;}
+input.cbox{appearance:none;-webkit-appearance:none;width:14px;height:14px;border:1.5px solid #000;background:#fff;cursor:pointer;position:relative;flex-shrink:0;vertical-align:middle;margin-top:1px;}
+input.cbox:checked::after{content:'✓';position:absolute;top:-4px;left:0;font-family:var(--f);font-size:15px;}
+hr.dv{border:none;border-top:1px solid #ccc;margin:7px 0;}
+hr.dvs{border:none;border-top:1.5px solid #000;margin:8px 0;}
+.pr{display:flex;align-items:center;gap:7px;margin-bottom:8px;}
+.pl{font-size:12px;color:var(--ct);min-width:74px;flex-shrink:0;}
+
+/* Chat messages */
+.cmsgs{display:flex;flex-direction:column;gap:6px;}
+.mu{padding:4px 7px;border-left:3px solid #555;font-size:12px;color:var(--cr);line-height:1.45;}
+.ma{padding:4px 8px;border:1px solid #bbb;background:#fafafa;font-size:12px;line-height:1.45;white-space:pre-wrap;}
+.mtc{padding:3px 7px;border:1px dashed #999;background:#f3f7f3;font-size:11px;color:var(--ct);font-family:'Courier New',monospace;}
+.mtr{padding:3px 7px;border:1px solid #ccc;background:#f0f5f0;font-size:10.5px;color:var(--ct);white-space:pre;overflow-x:auto;font-family:'Courier New',monospace;}
+.me{padding:3px 7px;border:1px solid #c33;background:#fff0f0;font-size:11px;color:var(--cw);}
+.mrole{font-size:10px;color:#aaa;margin-bottom:1px;letter-spacing:.5px;}
+
+/* Console input row */
+.cir{flex-shrink:0;padding:5px 6px;border-top:1.5px solid #aaa;display:flex;gap:5px;}
+
+/* Session items */
+.si{flex-shrink:0;padding:0;border:1.5px solid #ccc;margin-bottom:5px;cursor:pointer;}
+.si:hover{border-color:#666;}
+.si-hdr{padding:2px 6px;background:#ededed;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;align-items:center;}
+.si-pre{padding:2px 6px 1px;font-size:11px;color:#555;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.si-meta{padding:1px 6px 3px;font-size:10px;color:#aaa;}
+.badge{font-size:9px;background:#000;color:#fff;padding:0 3px;}
+
+/* Status bar */
+.sb{flex-shrink:0;height:18px;background:#fff;border-top:1.5px solid #999;display:flex;align-items:center;padding:0 8px;font-size:10px;color:#777;gap:14px;overflow:hidden;}
+
+/* Hint */
+.hint{color:#bbb;font-size:12px;text-align:center;padding:22px 8px;line-height:1.7;}
+
+/* Blink cursor */
+@keyframes bk{0%,100%{opacity:1}50%{opacity:0}}
+.bk{animation:bk .7s infinite;}
+</style>
+</head>
+<body>
+
+<div class="mb">
+  <span class="mb-a">⌘</span>
+  <span class="mb-i">File</span>
+  <span class="mb-i">Edit</span>
+  <span class="mb-i">Agent</span>
+  <span class="mb-i">Tool</span>
+  <span class="mb-i">Window</span>
+  <span class="mb-i">Help</span>
+  <span class="mb-r" id="clock">Agent Workbench 1.0  ●  --:--</span>
+</div>
+
+<div class="ws">
+  <!-- LEFT: Config -->
+  <div class="win" id="win-config">
+    <div class="wtb">
+      <span class="cb">□</span>
+      <span class="wtb-t" style="color:var(--ca)">Configuration</span>
+    </div>
+    <div class="tabs" id="config-tabs">
+      <div class="tab on" data-tab="agent">Agent</div>
+      <div class="tab" data-tab="tool">SQL Tool</div>
+    </div>
+    <div class="wb" id="config-body"></div>
+  </div>
+
+  <!-- CENTER: Test Console -->
+  <div class="win" style="display:flex;flex-direction:column;">
+    <div class="wtb">
+      <span class="cb">□</span>
+      <span class="wtb-t" style="color:var(--cr)">Test Console</span>
+    </div>
+    <div class="wb" id="chat-body">
+      <div class="cmsgs" id="chat-msgs">
+        <div class="hint" id="chat-hint">Configure agent &amp; tool prompts,<br>then test below.<br><span style="color:#d0d0d0">──────────────────</span><br><span style="color:#ccc;font-size:11px">Try: "How many users are active?"</span><br><span style="color:#ccc;font-size:11px">Or: "Show all orders over $50"</span></div>
+      </div>
+    </div>
+    <div class="cir">
+      <button class="btn" id="btn-new" title="Save & start new chat" style="font-size:12px;flex-shrink:0">◻ New</button>
+      <input class="inp" id="chat-input" style="flex:1" placeholder="Ask a data question..." />
+      <button class="btn btn-p" id="btn-run" style="flex-shrink:0">Run ▶</button>
+    </div>
+  </div>
+
+  <!-- RIGHT: Sessions -->
+  <div class="win">
+    <div class="wtb">
+      <span class="cb">□</span>
+      <span class="wtb-t" style="color:var(--ch)">Sessions</span>
+    </div>
+    <div class="tabs" id="sess-tabs">
+      <div class="tab on" data-stab="list">History</div>
+    </div>
+    <div class="wb" id="sess-body"></div>
+  </div>
+</div>
+
+<div class="sb">
+  <span>claude-sonnet-4-20250514</span>
+  <span id="sb-agent" style="color:var(--ca)"></span>
+  <span id="sb-maxrows" style="color:var(--ct)"></span>
+  <span id="sb-schema" style="color:var(--ct)"></span>
+  <span id="sb-rw"></span>
+  <span style="margin-left:auto;color:#bbb" id="sb-counts">0 msgs · 0 sessions</span>
+</div>
+
+<script>
+const DA=`You are a helpful data analyst assistant with access to a company database. Use the sql_query tool whenever users ask questions about data.
+
+When answering:
+1. Write a precise SQL query to retrieve the needed data
+2. Briefly explain what the query does
+3. Interpret the results clearly and concisely
+
+Always be accurate and to the point.`;
+
+const DT=`Execute a SQL query against the company database and return tabular results.
+
+Available tables:
+  users    (id, name, email, created_at, status)
+  orders   (order_id, user_id, product, amount, status, date)
+  products (id, name, price, stock, category)
+
+Use standard SQL syntax. Read-only by default.`;
+
+const DP={maxRows:100,timeout:30,readOnly:true,schemas:'public'};
+
+// --- State ---
+let agentPrompt=DA,toolPrompt=DT,params={...DP};
+let msgs=[],history=[],sessions=[],loading=false;
+let configTab='agent',sessTab='list',selSess=null;
+
+// --- Seeded sessions ---
+sessions=[
+  {id:1,ts:'2025-03-26T14:32:00',agentPrompt:'You are a SQL assistant. Use the sql_query tool to answer data questions concisely.',
+   toolPrompt:'Execute SQL query against the database.',toolParams:{maxRows:50,timeout:15,readOnly:true,schemas:'public'},
+   summary:'How many users do we have?',msgCount:4,
+   displayMsgs:[
+     {type:'user',text:'How many users do we have?'},
+     {type:'tool_call',query:'SELECT COUNT(*) FROM users;'},
+     {type:'tool_result',result:'+-------+\n| count |\n+-------+\n| 5     |\n+-------+\n1 row(s) | public | timeout:15s'},
+     {type:'assistant',text:'You currently have 5 users in the database.'},
+   ]},
+  {id:2,ts:'2025-03-25T09:15:00',agentPrompt:DA,toolPrompt:DT,
+   toolParams:{maxRows:200,timeout:60,readOnly:false,schemas:'analytics'},
+   summary:'Top products by revenue',msgCount:6,
+   displayMsgs:[
+     {type:'user',text:'Show me top products by revenue'},
+     {type:'tool_call',query:'SELECT product, SUM(amount) as revenue\nFROM orders\nGROUP BY product\nORDER BY revenue DESC\nLIMIT 5;'},
+     {type:'tool_result',result:'+-----------+---------+\n| product   | revenue |\n+-----------+---------+\n| Gadget Y  | 149.99  |\n| Gadget X  | 99.99   |\n| Widget A  | 59.98   |\n| Widget B  | 49.99   |\n+-----------+---------+\n4 row(s) | analytics | timeout:60s'},
+     {type:'assistant',text:'Top products by total revenue:\n\n1. Gadget Y  — $149.99\n2. Gadget X  — $99.99\n3. Widget A  — $59.98 (2 orders)\n4. Widget B  — $49.99\n\nGadget Y leads despite fewer orders thanks to its higher price point.'},
+   ]},
+];
+
+// --- SQL Simulator ---
+function simSQL(q,p){
+  if(p.readOnly&&/^\s*(insert|update|delete|drop|create|alter|truncate)/i.test(q))
+    return 'ERROR: Read-only mode enabled. Write operations not permitted.';
+  const lq=q.toLowerCase();
+  const fm=lq.match(/from\s+(\w+)/i);
+  const tbl=fm?.[1]?.toLowerCase();
+  const tables={
+    users:[
+      {id:1,name:'Alice Johnson',email:'alice@co.com',created_at:'2024-01-15',status:'active'},
+      {id:2,name:'Bob Smith',email:'bob@co.com',created_at:'2024-02-20',status:'active'},
+      {id:3,name:'Carol Davis',email:'carol@co.com',created_at:'2024-03-05',status:'inactive'},
+      {id:4,name:'David Lee',email:'david@co.com',created_at:'2024-03-18',status:'active'},
+      {id:5,name:'Eva Brown',email:'eva@co.com',created_at:'2024-04-02',status:'active'},
+    ],
+    orders:[
+      {order_id:1001,user_id:1,product:'Widget A',amount:29.99,status:'shipped',date:'2024-03-01'},
+      {order_id:1002,user_id:2,product:'Widget B',amount:49.99,status:'delivered',date:'2024-03-05'},
+      {order_id:1003,user_id:1,product:'Gadget X',amount:99.99,status:'pending',date:'2024-03-10'},
+      {order_id:1004,user_id:3,product:'Widget A',amount:29.99,status:'delivered',date:'2024-03-12'},
+      {order_id:1005,user_id:5,product:'Gadget Y',amount:149.99,status:'shipped',date:'2024-03-20'},
+    ],
+    products:[
+      {id:1,name:'Widget A',price:29.99,stock:150,category:'widgets'},
+      {id:2,name:'Widget B',price:49.99,stock:75,category:'widgets'},
+      {id:3,name:'Gadget X',price:99.99,stock:30,category:'gadgets'},
+      {id:4,name:'Gadget Y',price:149.99,stock:12,category:'gadgets'},
+    ],
+  };
+  let data=tables[tbl]||[{result:'ok',affected_rows:1}];
+  if(/count\(\s*\*?\s*\)/i.test(q)) data=[{count:data.length}];
+  const lm=q.match(/limit\s+(\d+)/i);
+  data=data.slice(0,lm?Math.min(+lm[1],p.maxRows):p.maxRows);
+  if(!data.length) return '0 rows returned.';
+  const cols=Object.keys(data[0]);
+  const ws=cols.map(c=>Math.max(c.length,...data.map(r=>String(r[c]??'').length)));
+  const sep='+'+ws.map(w=>'-'.repeat(w+2)).join('+')+'+';
+  const hdr='|'+cols.map((c,i)=>` ${c.padEnd(ws[i])} `).join('|')+'|';
+  const rows=data.map(r=>'|'+cols.map((c,i)=>` ${String(r[c]??'').padEnd(ws[i])} `).join('|')+'|');
+  return[sep,hdr,sep,...rows,sep,`${data.length} row(s) | ${p.schemas} | timeout:${p.timeout}s`].join('\n');
+}
+
+// --- API Call ---
+async function callAgent(txt){
+  const tool={name:'sql_query',description:toolPrompt,
+    input_schema:{type:'object',properties:{query:{type:'string',description:'SQL to execute'}},required:['query']}};
+  const apiMsgs=[...history,{role:'user',content:txt}];
+  const go=async(messages)=>{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system:agentPrompt,tools:[tool],messages})});
+    if(!r.ok){const e=await r.json();throw new Error(e.error?.message||`HTTP ${r.status}`);}
+    return r.json();
+  };
+  const d1=await go(apiMsgs);
+  const events=[];
+  let nh=[...apiMsgs,{role:'assistant',content:d1.content}];
+  const tu=d1.content?.find(b=>b.type==='tool_use');
+  if(tu){
+    const res=simSQL(tu.input.query,params);
+    events.push({type:'tool_call',query:tu.input.query});
+    events.push({type:'tool_result',result:res});
+    nh=[...nh,{role:'user',content:[{type:'tool_result',tool_use_id:tu.id,content:res}]}];
+    const d2=await go(nh);
+    events.push({type:'assistant',text:d2.content?.find(b=>b.type==='text')?.text||'(no response)'});
+    nh=[...nh,{role:'assistant',content:d2.content}];
+  } else {
+    events.push({type:'assistant',text:d1.content?.find(b=>b.type==='text')?.text||'(no response)'});
+  }
+  return{events,nh};
+}
+
+// --- DOM Helpers ---
+function el(tag,attrs={},children=[]){
+  const e=document.createElement(tag);
+  for(const[k,v] of Object.entries(attrs)){
+    if(k==='style'&&typeof v==='object') Object.assign(e.style,v);
+    else if(k==='class') e.className=v;
+    else if(k.startsWith('on')) e.addEventListener(k.slice(2).toLowerCase(),v);
+    else e.setAttribute(k,v);
+  }
+  for(const c of children){
+    if(typeof c==='string') e.appendChild(document.createTextNode(c));
+    else if(c) e.appendChild(c);
+  }
+  return e;
+}
+function h(tag,attrs,...children){return el(tag,attrs,children);}
+
+// --- Render Config Left Panel ---
+function renderConfig(){
+  const body=document.getElementById('config-body');
+  body.innerHTML='';
+  if(configTab==='agent'){
+    const wc=agentPrompt.trim().split(/\s+/).filter(Boolean).length;
+    body.appendChild(h('label',{class:'lbl',style:{color:'var(--ca)'}},'● System Prompt'));
+    const ta=h('textarea',{class:'ta',rows:'12'});
+    ta.value=agentPrompt;
+    ta.addEventListener('input',e=>{agentPrompt=e.target.value;updateStatusBar();});
+    body.appendChild(ta);
+    body.appendChild(h('hr',{class:'dv'}));
+    const info=h('div',{style:{fontSize:'11px',color:'#999'}});
+    info.innerHTML=`<div>Model · claude-sonnet-4-20250514</div><div>Max tokens · 1000</div><div style="margin-top:3px;color:var(--ca)">${agentPrompt.length} chars · ~${Math.ceil(wc*1.3)} tokens est.</div>`;
+    body.appendChild(info);
+  } else {
+    body.appendChild(h('label',{class:'lbl',style:{color:'var(--ct)'}},'▶ Tool Description'));
+    const ta=h('textarea',{class:'ta',rows:'8'});
+    ta.value=toolPrompt;
+    ta.addEventListener('input',e=>{toolPrompt=e.target.value;});
+    body.appendChild(ta);
+    body.appendChild(h('hr',{class:'dvs'}));
+    body.appendChild(h('div',{style:{fontSize:'11px',color:'var(--ct)',marginBottom:'7px',fontWeight:'bold',letterSpacing:'.5px'}},'PARAMETERS'));
+
+    // maxRows
+    const pr1=h('div',{class:'pr'});
+    pr1.appendChild(h('span',{class:'pl'},'Max Rows'));
+    const mrInp=h('input',{class:'inp',type:'number',style:{width:'64px'},min:'1',max:'10000'});
+    mrInp.value=params.maxRows;
+    mrInp.addEventListener('change',e=>{params.maxRows=+e.target.value||1;updateStatusBar();});
+    pr1.appendChild(mrInp);
+    pr1.appendChild(h('span',{style:{fontSize:'11px',color:'#aaa'}},'rows'));
+    body.appendChild(pr1);
+
+    // timeout
+    const pr2=h('div',{class:'pr'});
+    pr2.appendChild(h('span',{class:'pl'},'Timeout'));
+    const toInp=h('input',{class:'inp',type:'number',style:{width:'64px'},min:'1',max:'300'});
+    toInp.value=params.timeout;
+    toInp.addEventListener('change',e=>{params.timeout=+e.target.value||1;updateStatusBar();});
+    pr2.appendChild(toInp);
+    pr2.appendChild(h('span',{style:{fontSize:'11px',color:'#aaa'}},'sec'));
+    body.appendChild(pr2);
+
+    // schema
+    const pr3=h('div',{class:'pr'});
+    pr3.appendChild(h('span',{class:'pl'},'Schema'));
+    const scInp=h('input',{class:'inp',style:{flex:'1'}});
+    scInp.value=params.schemas;
+    scInp.addEventListener('input',e=>{params.schemas=e.target.value;updateStatusBar();});
+    pr3.appendChild(scInp);
+    body.appendChild(pr3);
+
+    // readOnly
+    const pr4=h('div',{class:'pr'});
+    pr4.appendChild(h('span',{class:'pl'},'Read Only'));
+    const roInp=h('input',{class:'cbox',type:'checkbox'});
+    roInp.checked=params.readOnly;
+    roInp.addEventListener('change',e=>{params.readOnly=e.target.checked;renderConfig();updateStatusBar();});
+    pr4.appendChild(roInp);
+    pr4.appendChild(h('span',{style:{fontSize:'11px',color:params.readOnly?'#888':'var(--cw)',marginLeft:'4px'}},
+      params.readOnly?'writes blocked':'⚠ writes allowed'));
+    body.appendChild(pr4);
+
+    body.appendChild(h('hr',{class:'dv'}));
+    body.appendChild(h('div',{style:{fontSize:'10px',color:'#bbb'}},'tool: sql_query · schema v1.0'));
+  }
+}
+
+// --- Render Chat Messages ---
+function renderMsgs(){
+  const container=document.getElementById('chat-msgs');
+  container.innerHTML='';
+  if(msgs.length===0){
+    container.innerHTML=`<div class="hint" id="chat-hint">Configure agent &amp; tool prompts,<br>then test below.<br><span style="color:#d0d0d0">──────────────────</span><br><span style="color:#ccc;font-size:11px">Try: "How many users are active?"</span><br><span style="color:#ccc;font-size:11px">Or: "Show all orders over $50"</span></div>`;
+    return;
+  }
+  for(const m of msgs){
+    const d=document.createElement('div');
+    if(m.type==='user'){
+      d.className='mu';
+      d.innerHTML=`<div class="mrole" style="color:var(--cr)">USER ▶</div>${escHtml(m.text)}`;
+    } else if(m.type==='tool_call'){
+      d.className='mtc';
+      d.innerHTML=`<div style="font-weight:bold;margin-bottom:2px">⚙ TOOL CALL · sql_query</div><div style="opacity:.85;white-space:pre-wrap">${escHtml(m.query)}</div>`;
+    } else if(m.type==='tool_result'){
+      d.className='mtr';
+      d.innerHTML=`<div style="font-weight:bold;margin-bottom:2px">↳ RESULT</div>${escHtml(m.result)}`;
+    } else if(m.type==='assistant'){
+      d.className='ma';
+      d.innerHTML=`<div class="mrole">◀ ASSISTANT</div>${escHtml(m.text)}`;
+    } else if(m.type==='error'){
+      d.className='me';
+      d.textContent='⚠ '+m.text;
+    }
+    container.appendChild(d);
+  }
+  if(loading){
+    const ld=document.createElement('div');
+    ld.style.cssText='color:#aaa;font-size:12px;padding:4px';
+    ld.innerHTML='<span class="bk">▮</span> Running agent...';
+    container.appendChild(ld);
+  }
+  const body=document.getElementById('chat-body');
+  body.scrollTop=body.scrollHeight;
+}
+
+function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// --- Render Sessions ---
+function renderSessions(){
+  const body=document.getElementById('sess-body');
+  const tabsEl=document.getElementById('sess-tabs');
+  // Update tabs
+  tabsEl.innerHTML='';
+  const t1=h('div',{class:'tab'+(sessTab==='list'?' on':''),'data-stab':'list'},'History');
+  t1.addEventListener('click',()=>{sessTab='list';selSess=null;renderSessions();});
+  tabsEl.appendChild(t1);
+  if(selSess){
+    const t2=h('div',{class:'tab'+(sessTab==='detail'?' on':''),'data-stab':'detail'},'Detail');
+    t2.addEventListener('click',()=>{sessTab='detail';renderSessions();});
+    tabsEl.appendChild(t2);
+  }
+
+  body.innerHTML='';
+  if(sessTab==='list'){
+    if(sessions.length===0){
+      body.appendChild(h('div',{class:'hint'},'No sessions yet.\nRun a test and click New\nto archive it here.'));
+      return;
+    }
+    body.appendChild(h('div',{style:{fontSize:'10px',color:'#aaa',marginBottom:'6px'}},
+      `${sessions.length} session${sessions.length!==1?'s':''} archived`));
+    for(const s of sessions){
+      const item=document.createElement('div');
+      item.className='si';
+      item.addEventListener('click',()=>{selSess=s;sessTab='detail';renderSessions();});
+      item.innerHTML=`
+        <div class="si-hdr">
+          <span style="font-size:10px;color:var(--ch)">${new Date(s.ts).toLocaleDateString()} · ${new Date(s.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
+          <span class="badge">${s.msgCount}</span>
+        </div>
+        <div class="si-pre">${escHtml(s.summary)}</div>
+        <div class="si-meta">rows:${s.toolParams.maxRows} · ${s.toolParams.readOnly?'RO':'RW'} · ${escHtml(s.toolParams.schemas)}</div>`;
+      body.appendChild(item);
+    }
+  } else if(selSess){
+    const s=selSess;
+    const backBtn=h('button',{class:'btn',style:{fontSize:'11px',marginBottom:'8px'}},'← Back');
+    backBtn.addEventListener('click',()=>{sessTab='list';selSess=null;renderSessions();});
+    body.appendChild(backBtn);
+    body.appendChild(h('div',{style:{fontSize:'11px',color:'var(--ch)',marginBottom:'6px'}},new Date(s.ts).toLocaleString()));
+    for(const[lbl,text,col,bg] of [['Agent Prompt',s.agentPrompt,'var(--ca)','#fdf9f7'],['Tool Prompt',s.toolPrompt,'var(--ct)','#f6fbf7']]){
+      body.appendChild(h('div',{style:{marginBottom:'7px'}},
+        h('div',{style:{fontSize:'10px',color:col,marginBottom:'2px',fontWeight:'bold'}},lbl),
+        h('div',{style:{fontSize:'10px',border:'1px solid #ddd',padding:'3px 5px',background:bg,maxHeight:'52px',overflow:'auto',color:'#555',lineHeight:'1.4',whiteSpace:'pre-wrap'}},text)
+      ));
+    }
+    const parDiv=h('div',{style:{marginBottom:'8px'}},
+      h('div',{style:{fontSize:'10px',color:'var(--ct)',marginBottom:'2px',fontWeight:'bold'}},'Parameters'));
+    const parVal=h('div',{style:{fontSize:'10px',border:'1px solid #ddd',padding:'3px 6px',background:'#f4f9f4',color:'#555'}});
+    parVal.innerHTML=`maxRows: ${s.toolParams.maxRows} · timeout: ${s.toolParams.timeout}s<br>schema: ${escHtml(s.toolParams.schemas)} · ${s.toolParams.readOnly?'READ ONLY':'⚠ READ/WRITE'}`;
+    parDiv.appendChild(parVal);
+    body.appendChild(parDiv);
+    if(s.displayMsgs?.length){
+      body.appendChild(h('hr',{class:'dv'}));
+      body.appendChild(h('div',{style:{fontSize:'10px',color:'#999',marginBottom:'4px'}},`Conversation (${s.msgCount} msgs)`));
+      const convo=h('div',{style:{maxHeight:'140px',overflow:'auto',display:'flex',flexDirection:'column',gap:'2px'}});
+      for(const m of s.displayMsgs){
+        const d=h('div',{style:{padding:'2px 5px',fontSize:'10px',border:'1px solid #e5e5e5',
+          background:m.type==='user'?'#f0f0fa':m.type==='tool_call'?'#f0f6f0':m.type==='tool_result'?'#f4f8f4':'#fafafa',
+          color:'#555',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}});
+        const pfx=m.type==='user'?'▶ ':m.type==='assistant'?'◀ ':'⚙ ';
+        d.textContent=pfx+(m.type==='tool_call'?m.query:(m.text||m.result||''));
+        convo.appendChild(d);
+      }
+      body.appendChild(convo);
+    }
+    const restBtn=h('button',{class:'btn btn-p',style:{width:'100%',fontSize:'12px',marginTop:'8px'}},'↺ Restore Config');
+    restBtn.addEventListener('click',()=>{
+      agentPrompt=s.agentPrompt;toolPrompt=s.toolPrompt;params={...s.toolParams};
+      msgs=[...(s.displayMsgs||[])];history=[];
+      sessTab='list';selSess=null;
+      renderAll();
+    });
+    body.appendChild(restBtn);
+  }
+}
+
+function updateStatusBar(){
+  document.getElementById('sb-agent').textContent=`agent: ${agentPrompt.slice(0,22).trim()}…`;
+  document.getElementById('sb-maxrows').textContent=`maxRows:${params.maxRows}`;
+  document.getElementById('sb-schema').textContent=`schema:${params.schemas}`;
+  const rwEl=document.getElementById('sb-rw');
+  rwEl.textContent=params.readOnly?'● READ ONLY':'⚠ READ/WRITE';
+  rwEl.style.color=params.readOnly?'#aaa':'var(--cw)';
+  document.getElementById('sb-counts').textContent=`${msgs.length} msg${msgs.length!==1?'s':''} · ${sessions.length} sessions`;
+}
+
+function renderAll(){
+  renderConfig();
+  renderMsgs();
+  renderSessions();
+  updateStatusBar();
+}
+
+// --- Config tabs ---
+document.getElementById('config-tabs').addEventListener('click',e=>{
+  const t=e.target.dataset.tab;
+  if(t){configTab=t;renderAll();}
+});
+
+// --- Send message ---
+async function sendMsg(){
+  const input=document.getElementById('chat-input');
+  const txt=input.value.trim();
+  if(!txt||loading) return;
+  input.value='';
+  msgs.push({type:'user',text:txt});
+  loading=true;
+  renderMsgs();updateStatusBar();
+  try{
+    const{events,nh}=await callAgent(txt);
+    for(const ev of events) msgs.push(ev);
+    history=nh;
+  }catch(e){
+    msgs.push({type:'error',text:e.message});
+  }finally{
+    loading=false;
+    renderMsgs();updateStatusBar();
+  }
+}
+
+document.getElementById('btn-run').addEventListener('click',sendMsg);
+document.getElementById('chat-input').addEventListener('keydown',e=>{if(e.key==='Enter')sendMsg();});
+
+// --- New chat ---
+document.getElementById('btn-new').addEventListener('click',()=>{
+  if(msgs.length>0){
+    sessions.unshift({
+      id:Date.now(),ts:new Date().toISOString(),agentPrompt,toolPrompt,
+      toolParams:{...params},
+      summary:msgs.find(m=>m.type==='user')?.text||'Untitled',
+      msgCount:msgs.length,displayMsgs:[...msgs]
+    });
+  }
+  msgs=[];history=[];
+  document.getElementById('chat-input').value='';
+  renderAll();
+});
+
+// --- Clock ---
+function updateClock(){
+  document.getElementById('clock').textContent=`Agent Workbench 1.0  ●  ${new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`;
+}
+updateClock();setInterval(updateClock,30000);
+
+// --- Init ---
+renderAll();
+</script>
+</body>
+</html>

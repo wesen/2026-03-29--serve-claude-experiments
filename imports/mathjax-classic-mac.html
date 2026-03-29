@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MathJax Formatter — Classic Mac</title>
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['$','$'], ['\\(','\\)']], displayMath: [['$$','$$'], ['\\[','\\]']] },
+  svg: { fontCache: 'global' },
+  startup: { typeset: false }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+<style>
+  @font-face {
+    font-family: 'Chicago';
+    src: url('https://cdn.jsdelivr.net/gh/poke1024/ChiKareGo2@main/build/ChiKareGo2.woff2') format('woff2');
+  }
+  @font-face {
+    font-family: 'Geneva';
+    src: url('https://cdn.jsdelivr.net/gh/poke1024/GenevaPix@main/build/GenevaPix.woff2') format('woff2');
+  }
+
+  :root {
+    --white: #ffffff;
+    --black: #000000;
+    --grey: #c0c0c0;
+    --light-grey: #e0e0e0;
+    --dark-grey: #808080;
+    --window-bg: #ffffff;
+    --desktop-bg: #6699aa;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--desktop-bg);
+    font-family: 'Chicago', 'Geneva', 'Monaco', monospace;
+    font-size: 12px;
+    color: var(--black);
+    min-height: 100vh;
+    overflow: hidden;
+    cursor: default;
+    image-rendering: pixelated;
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: unset;
+  }
+
+  /* Desktop pattern — classic Mac crosshatch */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 1px, rgba(0,0,0,0.08) 1px, rgba(0,0,0,0.08) 2px),
+      repeating-linear-gradient(90deg, transparent, transparent 1px, rgba(0,0,0,0.08) 1px, rgba(0,0,0,0.08) 2px);
+    background-size: 4px 4px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ========== MENU BAR ========== */
+  .menu-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 20px;
+    background: var(--white);
+    border-bottom: 2px solid var(--black);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    z-index: 10000;
+    gap: 16px;
+    font-size: 12px;
+    line-height: 20px;
+  }
+  .menu-bar .apple-logo {
+    font-size: 14px;
+    padding: 0 4px;
+    font-weight: bold;
+  }
+  .menu-bar span {
+    font-weight: bold;
+    letter-spacing: 0.3px;
+  }
+  .menu-bar span:hover {
+    background: var(--black);
+    color: var(--white);
+    padding: 0 4px;
+    margin: 0 -4px;
+  }
+
+  /* ========== WINDOW CHROME ========== */
+  .mac-window {
+    position: absolute;
+    background: var(--window-bg);
+    border: 2px solid var(--black);
+    box-shadow: 2px 2px 0 var(--black);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .title-bar {
+    height: 20px;
+    background: var(--white);
+    border-bottom: 2px solid var(--black);
+    display: flex;
+    align-items: center;
+    position: relative;
+    cursor: grab;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  .title-bar:active { cursor: grabbing; }
+
+  /* Classic Mac horizontal lines in title bar */
+  .title-bar::before {
+    content: '';
+    position: absolute;
+    left: 24px; right: 24px;
+    top: 3px; bottom: 3px;
+    background: repeating-linear-gradient(
+      to bottom,
+      var(--black) 0px, var(--black) 1px,
+      var(--white) 1px, var(--white) 3px
+    );
+    z-index: 0;
+  }
+
+  .title-bar-text {
+    position: relative;
+    z-index: 1;
+    margin: 0 auto;
+    background: var(--white);
+    padding: 0 8px;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+  }
+
+  .close-box {
+    position: absolute;
+    left: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 12px;
+    height: 12px;
+    border: 1.5px solid var(--black);
+    background: var(--white);
+    z-index: 2;
+    cursor: pointer;
+  }
+  .close-box:active::after {
+    content: '×';
+    position: absolute;
+    top: -3px; left: 1px;
+    font-size: 12px;
+    font-weight: bold;
+  }
+
+  .window-body {
+    flex: 1;
+    overflow: auto;
+    background: var(--white);
+  }
+
+  /* ========== SCROLLBAR (Classic Mac) ========== */
+  .window-body::-webkit-scrollbar { width: 16px; }
+  .window-body::-webkit-scrollbar-track {
+    background: var(--white);
+    border-left: 1px solid var(--black);
+  }
+  .window-body::-webkit-scrollbar-thumb {
+    background: var(--white);
+    border: 1px solid var(--black);
+    border-radius: 0;
+  }
+  .window-body::-webkit-scrollbar-button { display: block; height: 16px; background: var(--light-grey); border: 1px solid var(--black); }
+
+  /* ========== RESIZE HANDLE ========== */
+  .resize-handle {
+    position: absolute;
+    bottom: 0; right: 0;
+    width: 16px; height: 16px;
+    cursor: nwse-resize;
+    z-index: 200;
+    overflow: hidden;
+  }
+  .resize-handle::before {
+    content: '';
+    position: absolute;
+    right: 2px; bottom: 2px;
+    width: 10px; height: 10px;
+    background:
+      linear-gradient(135deg, transparent 30%, var(--black) 30%, var(--black) 35%, transparent 35%,
+        transparent 50%, var(--black) 50%, var(--black) 55%, transparent 55%,
+        transparent 70%, var(--black) 70%, var(--black) 75%, transparent 75%);
+  }
+
+  /* ========== MAIN WINDOW ========== */
+  #main-window {
+    top: 32px; left: 40px;
+    width: 620px;
+    height: 520px;
+  }
+
+  .main-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  /* Tab Bar */
+  .tab-bar {
+    display: flex;
+    border-bottom: 2px solid var(--black);
+    background: var(--light-grey);
+    flex-shrink: 0;
+  }
+  .tab {
+    padding: 4px 16px;
+    cursor: pointer;
+    border-right: 1px solid var(--black);
+    font-size: 12px;
+    font-weight: bold;
+    user-select: none;
+    background: var(--light-grey);
+    position: relative;
+  }
+  .tab.active {
+    background: var(--white);
+    border-bottom: 2px solid var(--white);
+    margin-bottom: -2px;
+  }
+  .tab:hover:not(.active) { background: var(--grey); }
+
+  /* Panels */
+  .panel {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .panel.active {
+    display: flex;
+  }
+
+  /* ========== FORMATTER PANEL ========== */
+  .input-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border-bottom: 2px solid var(--black);
+    min-height: 120px;
+  }
+  .section-label {
+    background: var(--light-grey);
+    border-bottom: 1px solid var(--black);
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: bold;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .latex-input {
+    flex: 1;
+    width: 100%;
+    border: none;
+    outline: none;
+    padding: 8px;
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    resize: none;
+    background: var(--white);
+    -webkit-font-smoothing: none;
+    line-height: 1.5;
+  }
+
+  .output-section {
+    flex: 1.2;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .output-area {
+    flex: 1;
+    padding: 16px;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 80px;
+    background: var(--white);
+  }
+  .output-area .placeholder {
+    color: var(--dark-grey);
+    font-style: italic;
+    font-size: 11px;
+  }
+
+  /* Buttons */
+  .mac-btn {
+    font-family: 'Chicago', 'Geneva', monospace;
+    font-size: 11px;
+    padding: 3px 14px;
+    border: 2px solid var(--black);
+    border-radius: 6px;
+    background: var(--white);
+    cursor: pointer;
+    font-weight: bold;
+    -webkit-font-smoothing: none;
+    white-space: nowrap;
+  }
+  .mac-btn:active {
+    background: var(--black);
+    color: var(--white);
+  }
+  .mac-btn.primary {
+    background: var(--black);
+    color: var(--white);
+    box-shadow: 0 0 0 2px var(--white), 0 0 0 4px var(--black);
+  }
+  .mac-btn.primary:active {
+    background: var(--dark-grey);
+  }
+
+  .toolbar {
+    display: flex;
+    gap: 6px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--black);
+    background: var(--light-grey);
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+  .toolbar button {
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+    padding: 2px 6px;
+    border: 1.5px solid var(--black);
+    background: var(--white);
+    cursor: pointer;
+    min-width: 28px;
+    text-align: center;
+  }
+  .toolbar button:active {
+    background: var(--black);
+    color: var(--white);
+  }
+
+  .button-row {
+    display: flex;
+    gap: 8px;
+    padding: 6px 8px;
+    background: var(--light-grey);
+    border-top: 1px solid var(--black);
+    justify-content: flex-end;
+    flex-shrink: 0;
+  }
+
+  /* ========== CALCULATOR PANEL ========== */
+  .calc-display {
+    background: var(--white);
+    border: 2px inset var(--dark-grey);
+    margin: 8px;
+    padding: 8px 12px;
+    text-align: right;
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 22px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    overflow: hidden;
+    word-break: break-all;
+  }
+  .calc-expr {
+    background: var(--light-grey);
+    margin: 0 8px;
+    padding: 4px 12px;
+    font-family: 'Monaco', monospace;
+    font-size: 11px;
+    color: var(--dark-grey);
+    text-align: right;
+    min-height: 18px;
+    border: 1px solid var(--grey);
+  }
+
+  .calc-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    padding: 8px;
+    flex: 1;
+  }
+  .calc-btn {
+    font-family: 'Chicago', 'Geneva', monospace;
+    font-size: 14px;
+    padding: 8px 4px;
+    border: 2px outset var(--grey);
+    background: var(--light-grey);
+    cursor: pointer;
+    text-align: center;
+    font-weight: bold;
+    -webkit-font-smoothing: none;
+    user-select: none;
+  }
+  .calc-btn:active {
+    border-style: inset;
+    background: var(--dark-grey);
+    color: var(--white);
+  }
+  .calc-btn.op {
+    background: var(--grey);
+  }
+  .calc-btn.special {
+    background: #333;
+    color: var(--white);
+    border-color: #555;
+  }
+  .calc-btn.wide { grid-column: span 2; }
+  .calc-btn.equals {
+    background: var(--black);
+    color: var(--white);
+    border-color: #444;
+  }
+
+  .calc-mathjax-output {
+    margin: 0 8px 8px;
+    padding: 8px;
+    border: 2px inset var(--dark-grey);
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fafafa;
+  }
+
+  /* ========== EXAMPLES PANEL ========== */
+  .examples-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+  .example-item {
+    border: 1.5px solid var(--black);
+    margin-bottom: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--white);
+  }
+  .example-item:hover { background: var(--black); color: var(--white); }
+  .example-item:hover .example-label { color: var(--white); }
+  .example-label {
+    font-size: 11px;
+    font-weight: bold;
+    flex-shrink: 0;
+    width: 100px;
+    color: var(--black);
+  }
+  .example-latex {
+    font-family: 'Monaco', monospace;
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ========== ABOUT WINDOW ========== */
+  #about-window {
+    top: 80px; left: 160px;
+    width: 300px;
+    display: none;
+    z-index: 500;
+  }
+  #about-window.visible { display: flex; }
+
+  .about-body {
+    padding: 20px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .about-icon {
+    width: 64px; height: 64px;
+    border: 2px solid var(--black);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    background: var(--light-grey);
+    margin-bottom: 4px;
+  }
+  .about-body h2 { font-size: 14px; margin: 0; }
+  .about-body p { font-size: 11px; color: var(--dark-grey); line-height: 1.5; }
+  .about-body .version { font-size: 10px; margin-top: 4px; }
+
+  /* ========== ERROR STYLE ========== */
+  .error-msg {
+    color: red;
+    font-size: 11px;
+    font-family: 'Geneva', monospace;
+    padding: 4px;
+  }
+
+  /* Pixel dithering bg for desktop */
+  .desktop-icon {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    text-align: center;
+    z-index: 1;
+    cursor: default;
+    user-select: none;
+  }
+  .desktop-icon .icon-img {
+    width: 48px; height: 48px;
+    border: 1px solid rgba(0,0,0,0.2);
+    background: var(--white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    margin: 0 auto 4px;
+  }
+  .desktop-icon .icon-label {
+    font-size: 10px;
+    color: var(--white);
+    text-shadow: 1px 1px 0 var(--black);
+    font-weight: bold;
+  }
+
+  /* Status bar */
+  .status-bar {
+    height: 18px;
+    background: var(--light-grey);
+    border-top: 1px solid var(--black);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    font-size: 10px;
+    color: var(--dark-grey);
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- MENU BAR -->
+<div class="menu-bar">
+  <span class="apple-logo" onclick="toggleAbout()">&#63743;</span>
+  <span>File</span>
+  <span>Edit</span>
+  <span>Format</span>
+  <span>Special</span>
+</div>
+
+<!-- MAIN WINDOW -->
+<div class="mac-window" id="main-window">
+  <div class="title-bar" onmousedown="startDrag(event, 'main-window')">
+    <div class="close-box" onclick="document.getElementById('main-window').style.display='none'"></div>
+    <div class="title-bar-text">MathJax Formatter</div>
+  </div>
+  <div class="window-body">
+    <div class="main-content">
+      <!-- TABS -->
+      <div class="tab-bar">
+        <div class="tab active" data-tab="formatter" onclick="switchTab('formatter')">Formatter</div>
+        <div class="tab" data-tab="calculator" onclick="switchTab('calculator')">Calculator</div>
+        <div class="tab" data-tab="examples" onclick="switchTab('examples')">Examples</div>
+      </div>
+
+      <!-- FORMATTER PANEL -->
+      <div class="panel active" id="panel-formatter">
+        <div class="toolbar">
+          <button onclick="insertSnippet('\\\\frac{a}{b}')" title="Fraction">a/b</button>
+          <button onclick="insertSnippet('\\\\sqrt{x}')" title="Square root">√x</button>
+          <button onclick="insertSnippet('\\\\sum_{i=0}^{n}')" title="Sum">Σ</button>
+          <button onclick="insertSnippet('\\\\int_{a}^{b}')" title="Integral">∫</button>
+          <button onclick="insertSnippet('\\\\lim_{x \\\\to \\\\infty}')" title="Limit">lim</button>
+          <button onclick="insertSnippet('\\\\prod_{i=1}^{n}')" title="Product">∏</button>
+          <button onclick="insertSnippet('x^{n}')" title="Superscript">x<sup>n</sup></button>
+          <button onclick="insertSnippet('x_{i}')" title="Subscript">x<sub>i</sub></button>
+          <button onclick="insertSnippet('\\\\binom{n}{k}')" title="Binomial">(n k)</button>
+          <button onclick="insertSnippet('\\\\infty')" title="Infinity">∞</button>
+          <button onclick="insertSnippet('\\\\alpha')" title="Alpha">α</button>
+          <button onclick="insertSnippet('\\\\beta')" title="Beta">β</button>
+          <button onclick="insertSnippet('\\\\theta')" title="Theta">θ</button>
+          <button onclick="insertSnippet('\\\\pi')" title="Pi">π</button>
+          <button onclick="insertSnippet('\\\\lambda')" title="Lambda">λ</button>
+          <button onclick="insertSnippet('\\\\vec{v}')" title="Vector">v⃗</button>
+          <button onclick="insertSnippet('\\\\begin{pmatrix} a & b \\\\\\\\ c & d \\\\end{pmatrix}')" title="Matrix">[ ]</button>
+        </div>
+        <div class="input-section">
+          <div class="section-label">
+            <span>LaTeX Input</span>
+          </div>
+          <textarea class="latex-input" id="latexInput" placeholder="Enter LaTeX here, e.g. \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}" spellcheck="false">E = mc^2</textarea>
+        </div>
+        <div class="output-section">
+          <div class="section-label">
+            <span>Rendered Output</span>
+            <button class="mac-btn" onclick="copyOutput()" style="font-size:10px; padding:1px 8px;">Copy SVG</button>
+          </div>
+          <div class="output-area" id="outputArea">
+            <span class="placeholder">Click "Typeset" to render…</span>
+          </div>
+        </div>
+        <div class="button-row">
+          <button class="mac-btn" onclick="clearInput()">Clear</button>
+          <button class="mac-btn primary" onclick="renderLatex()">Typeset</button>
+        </div>
+      </div>
+
+      <!-- CALCULATOR PANEL -->
+      <div class="panel" id="panel-calculator">
+        <div class="calc-expr" id="calcExpr">&nbsp;</div>
+        <div class="calc-display" id="calcDisplay">0</div>
+        <div class="calc-mathjax-output" id="calcMathOutput">
+          <span class="placeholder" style="font-size:11px; color:#999;">Result renders here</span>
+        </div>
+        <div class="calc-grid">
+          <button class="calc-btn special" onclick="calcAction('clear')">AC</button>
+          <button class="calc-btn special" onclick="calcAction('backspace')">⌫</button>
+          <button class="calc-btn op" onclick="calcInsert('(')">(</button>
+          <button class="calc-btn op" onclick="calcInsert(')')">)</button>
+          <button class="calc-btn op" onclick="calcInsert('/')">÷</button>
+
+          <button class="calc-btn op" onclick="calcInsert('sin(')">sin</button>
+          <button class="calc-btn" onclick="calcInsert('7')">7</button>
+          <button class="calc-btn" onclick="calcInsert('8')">8</button>
+          <button class="calc-btn" onclick="calcInsert('9')">9</button>
+          <button class="calc-btn op" onclick="calcInsert('*')">×</button>
+
+          <button class="calc-btn op" onclick="calcInsert('cos(')">cos</button>
+          <button class="calc-btn" onclick="calcInsert('4')">4</button>
+          <button class="calc-btn" onclick="calcInsert('5')">5</button>
+          <button class="calc-btn" onclick="calcInsert('6')">6</button>
+          <button class="calc-btn op" onclick="calcInsert('-')">−</button>
+
+          <button class="calc-btn op" onclick="calcInsert('tan(')">tan</button>
+          <button class="calc-btn" onclick="calcInsert('1')">1</button>
+          <button class="calc-btn" onclick="calcInsert('2')">2</button>
+          <button class="calc-btn" onclick="calcInsert('3')">3</button>
+          <button class="calc-btn op" onclick="calcInsert('+')">+</button>
+
+          <button class="calc-btn op" onclick="calcInsert('Math.PI')">π</button>
+          <button class="calc-btn wide" onclick="calcInsert('0')">0</button>
+          <button class="calc-btn" onclick="calcInsert('.')">.</button>
+          <button class="calc-btn op" onclick="calcInsert('^')">^</button>
+          <!-- empty grid spot -->
+        </div>
+        <div class="button-row" style="justify-content: center;">
+          <button class="mac-btn" onclick="calcAction('clear')" style="width:80px;">Clear</button>
+          <button class="mac-btn primary" onclick="calcEvaluate()" style="width:120px;">= Compute</button>
+        </div>
+      </div>
+
+      <!-- EXAMPLES PANEL -->
+      <div class="panel" id="panel-examples">
+        <div class="section-label"><span>Click an example to load it</span></div>
+        <div class="examples-list" id="examplesList"></div>
+      </div>
+
+      <div class="status-bar" id="statusBar">Ready</div>
+    </div>
+  </div>
+  <div class="resize-handle" onmousedown="startResize(event, 'main-window')"></div>
+</div>
+
+<!-- ABOUT WINDOW -->
+<div class="mac-window" id="about-window">
+  <div class="title-bar" onmousedown="startDrag(event, 'about-window')">
+    <div class="close-box" onclick="toggleAbout()"></div>
+    <div class="title-bar-text">About</div>
+  </div>
+  <div class="window-body">
+    <div class="about-body">
+      <div class="about-icon">∑</div>
+      <h2>MathJax Formatter</h2>
+      <p>A classic Macintosh-style<br>LaTeX formatter & calculator</p>
+      <p class="version">Version 1.0 — System 7 Edition<br>Powered by MathJax 3<br>© 2026</p>
+      <button class="mac-btn" onclick="toggleAbout()" style="margin-top: 6px;">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- DESKTOP ICON -->
+<div class="desktop-icon" ondblclick="document.getElementById('main-window').style.display='flex'">
+  <div class="icon-img">∑</div>
+  <div class="icon-label">MathJax<br>Formatter</div>
+</div>
+
+<script>
+  // ========== TAB SWITCHING ==========
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelector(`.tab[data-tab="${tab}"]`).classList.add('active');
+    document.getElementById(`panel-${tab}`).classList.add('active');
+  }
+
+  // ========== FORMATTER ==========
+  const latexInput = document.getElementById('latexInput');
+  const outputArea = document.getElementById('outputArea');
+
+  function insertSnippet(snippet) {
+    const ta = latexInput;
+    const start = ta.selectionStart, end = ta.selectionEnd;
+    ta.value = ta.value.substring(0, start) + snippet + ta.value.substring(end);
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = start + snippet.length;
+  }
+
+  async function renderLatex() {
+    const tex = latexInput.value.trim();
+    if (!tex) return;
+    outputArea.innerHTML = '';
+    document.getElementById('statusBar').textContent = 'Typesetting…';
+    try {
+      if (window.MathJax && MathJax.tex2svg) {
+        const node = MathJax.tex2svg(tex, {display: true});
+        outputArea.appendChild(node);
+        document.getElementById('statusBar').textContent = 'Typeset complete.';
+      } else {
+        outputArea.innerHTML = `<span class="placeholder">MathJax is still loading…</span>`;
+        document.getElementById('statusBar').textContent = 'Waiting for MathJax…';
+        setTimeout(renderLatex, 800);
+      }
+    } catch(e) {
+      outputArea.innerHTML = `<span class="error-msg">Error: ${e.message}</span>`;
+      document.getElementById('statusBar').textContent = 'Error.';
+    }
+  }
+
+  function clearInput() {
+    latexInput.value = '';
+    outputArea.innerHTML = '<span class="placeholder">Click "Typeset" to render…</span>';
+    document.getElementById('statusBar').textContent = 'Cleared.';
+  }
+
+  function copyOutput() {
+    const svg = outputArea.querySelector('svg');
+    if (!svg) return alert('Nothing to copy. Typeset first!');
+    const svgData = new XMLSerializer().serializeToString(svg);
+    navigator.clipboard.writeText(svgData).then(() => {
+      document.getElementById('statusBar').textContent = 'SVG copied to clipboard.';
+    }).catch(() => {
+      document.getElementById('statusBar').textContent = 'Copy failed.';
+    });
+  }
+
+  // Auto-render on Cmd/Ctrl+Enter
+  latexInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      renderLatex();
+    }
+  });
+
+  // ========== CALCULATOR ==========
+  let calcStr = '';
+
+  function calcInsert(val) {
+    calcStr += val;
+    document.getElementById('calcDisplay').textContent = calcStr || '0';
+  }
+
+  function calcAction(action) {
+    if (action === 'clear') {
+      calcStr = '';
+      document.getElementById('calcDisplay').textContent = '0';
+      document.getElementById('calcExpr').innerHTML = '&nbsp;';
+      document.getElementById('calcMathOutput').innerHTML = '<span class="placeholder" style="font-size:11px;color:#999;">Result renders here</span>';
+    } else if (action === 'backspace') {
+      // Handle multi-char tokens
+      const tokens = ['sin(','cos(','tan(','Math.PI'];
+      let removed = false;
+      for (const t of tokens) {
+        if (calcStr.endsWith(t)) { calcStr = calcStr.slice(0, -t.length); removed = true; break; }
+      }
+      if (!removed) calcStr = calcStr.slice(0, -1);
+      document.getElementById('calcDisplay').textContent = calcStr || '0';
+    }
+  }
+
+  function calcEvaluate() {
+    if (!calcStr) return;
+    const displayExpr = calcStr;
+    document.getElementById('calcExpr').textContent = displayExpr;
+    try {
+      // Convert ^ to ** for JS eval, replace display symbols
+      let expr = calcStr.replace(/\^/g, '**');
+      expr = expr.replace(/sin\(/g, 'Math.sin(').replace(/cos\(/g, 'Math.cos(').replace(/tan\(/g, 'Math.tan(');
+      const result = Function('"use strict"; return (' + expr + ')')();
+      const rounded = Math.round(result * 1e12) / 1e12;
+      document.getElementById('calcDisplay').textContent = rounded;
+      calcStr = String(rounded);
+
+      // Render as MathJax
+      let latexExpr = displayExpr
+        .replace(/Math\.PI/g, '\\pi')
+        .replace(/\*/g, ' \\cdot ')
+        .replace(/\//g, ' \\div ')
+        .replace(/sin\(/g, '\\sin(').replace(/cos\(/g, '\\cos(').replace(/tan\(/g, '\\tan(')
+        .replace(/\^/g, '^');
+      latexExpr += ' = ' + rounded;
+
+      const out = document.getElementById('calcMathOutput');
+      out.innerHTML = '';
+      if (MathJax && MathJax.tex2svg) {
+        out.appendChild(MathJax.tex2svg(latexExpr, {display: false}));
+      }
+    } catch(e) {
+      document.getElementById('calcDisplay').textContent = 'Error';
+      calcStr = '';
+    }
+  }
+
+  // ========== EXAMPLES ==========
+  const examples = [
+    { label: 'Quadratic', latex: '\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}' },
+    { label: "Euler's Identity", latex: 'e^{i\\pi} + 1 = 0' },
+    { label: 'Taylor Series', latex: 'e^x = \\sum_{n=0}^{\\infty} \\frac{x^n}{n!}' },
+    { label: 'Gauss Integral', latex: '\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}' },
+    { label: 'Pythagorean', latex: 'a^2 + b^2 = c^2' },
+    { label: 'Binomial', latex: '(x+y)^n = \\sum_{k=0}^{n} \\binom{n}{k} x^{n-k} y^k' },
+    { label: 'Maxwell Eq.', latex: '\\nabla \\times \\vec{E} = -\\frac{\\partial \\vec{B}}{\\partial t}' },
+    { label: 'Schrödinger', latex: 'i\\hbar \\frac{\\partial}{\\partial t} \\Psi = \\hat{H} \\Psi' },
+    { label: 'Cauchy-Schwarz', latex: '\\left| \\sum_{k=1}^{n} a_k b_k \\right|^2 \\leq \\left( \\sum_{k=1}^{n} a_k^2 \\right) \\left( \\sum_{k=1}^{n} b_k^2 \\right)' },
+    { label: 'Stirling', latex: 'n! \\approx \\sqrt{2\\pi n} \\left(\\frac{n}{e}\\right)^n' },
+    { label: 'Matrix', latex: '\\begin{pmatrix} 1 & 0 \\\\ 0 & 1 \\end{pmatrix} \\begin{pmatrix} a \\\\ b \\end{pmatrix} = \\begin{pmatrix} a \\\\ b \\end{pmatrix}' },
+    { label: 'Euler-Lagrange', latex: '\\frac{\\partial L}{\\partial q} - \\frac{d}{dt} \\frac{\\partial L}{\\partial \\dot{q}} = 0' },
+  ];
+
+  const exList = document.getElementById('examplesList');
+  examples.forEach(ex => {
+    const div = document.createElement('div');
+    div.className = 'example-item';
+    div.innerHTML = `<span class="example-label">${ex.label}</span><span class="example-latex">${ex.latex}</span>`;
+    div.onclick = () => {
+      latexInput.value = ex.latex;
+      switchTab('formatter');
+      renderLatex();
+    };
+    exList.appendChild(div);
+  });
+
+  // ========== WINDOW DRAGGING ==========
+  let dragState = null;
+  function startDrag(e, winId) {
+    if (e.target.classList.contains('close-box')) return;
+    const win = document.getElementById(winId);
+    const rect = win.getBoundingClientRect();
+    dragState = { win, offX: e.clientX - rect.left, offY: e.clientY - rect.top };
+    document.addEventListener('mousemove', onDrag);
+    document.addEventListener('mouseup', stopDrag);
+  }
+  function onDrag(e) {
+    if (!dragState) return;
+    const x = Math.max(0, e.clientX - dragState.offX);
+    const y = Math.max(20, e.clientY - dragState.offY);
+    dragState.win.style.left = x + 'px';
+    dragState.win.style.top = y + 'px';
+  }
+  function stopDrag() { dragState = null; document.removeEventListener('mousemove', onDrag); document.removeEventListener('mouseup', stopDrag); }
+
+  // ========== WINDOW RESIZING ==========
+  let resizeState = null;
+  function startResize(e, winId) {
+    const win = document.getElementById(winId);
+    const rect = win.getBoundingClientRect();
+    resizeState = { win, startX: e.clientX, startY: e.clientY, startW: rect.width, startH: rect.height };
+    document.addEventListener('mousemove', onResize);
+    document.addEventListener('mouseup', stopResize);
+    e.preventDefault();
+  }
+  function onResize(e) {
+    if (!resizeState) return;
+    const w = Math.max(350, resizeState.startW + (e.clientX - resizeState.startX));
+    const h = Math.max(300, resizeState.startH + (e.clientY - resizeState.startY));
+    resizeState.win.style.width = w + 'px';
+    resizeState.win.style.height = h + 'px';
+  }
+  function stopResize() { resizeState = null; document.removeEventListener('mousemove', onResize); document.removeEventListener('mouseup', stopResize); }
+
+  // ========== ABOUT ==========
+  function toggleAbout() {
+    document.getElementById('about-window').classList.toggle('visible');
+  }
+
+  // Auto-render on load
+  window.addEventListener('load', () => setTimeout(renderLatex, 1200));
+</script>
+</body>
+</html>

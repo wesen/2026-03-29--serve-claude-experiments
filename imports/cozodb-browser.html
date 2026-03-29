@@ -1,0 +1,1790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CozoDB Docs — MacOS 1 Browser</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Geneva:wght@400&display=swap');
+
+  :root {
+    --mac-white: #ffffff;
+    --mac-black: #000000;
+    --mac-gray: #c0c0c0;
+    --mac-dark-gray: #808080;
+    --mac-light-gray: #e0e0e0;
+    --mac-highlight: #000000;
+    --mac-highlight-text: #ffffff;
+    --border: 2px solid #000;
+    --shadow: 2px 2px 0px #000;
+    --inner-shadow: inset 1px 1px 0px #fff, inset -1px -1px 0px #808080;
+    --btn-shadow: inset 1px 1px 0px #fff, inset -1px -1px 0px #555, 1px 1px 0px #000;
+    --btn-pressed: inset 1px 1px 0px #555, inset -1px -1px 0px #fff;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background:
+      repeating-conic-gradient(#c0c0c0 0% 25%, #d0d0d0 0% 50%) 0 0 / 4px 4px;
+    min-height: 100vh;
+    font-family: "Geneva", "Chicago", "Charcoal", monospace;
+    font-size: 12px;
+    color: var(--mac-black);
+    padding: 0;
+    overflow: hidden;
+    cursor: default;
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: unset;
+  }
+
+  /* ========== MENU BAR ========== */
+  .menu-bar {
+    height: 22px;
+    background: var(--mac-white);
+    border-bottom: 2px solid var(--mac-black);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10000;
+    gap: 0;
+  }
+
+  .apple-logo {
+    width: 20px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 6px;
+    font-weight: bold;
+  }
+
+  .menu-item {
+    padding: 2px 10px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 12px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+  }
+  .menu-item:hover { background: var(--mac-black); color: var(--mac-white); }
+
+  .menu-spacer { flex: 1; }
+
+  .menu-clock {
+    font-size: 11px;
+    padding: 0 8px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ========== WINDOW ========== */
+  .window {
+    position: fixed;
+    background: var(--mac-white);
+    border: var(--border);
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    min-width: 320px;
+    min-height: 200px;
+  }
+
+  .title-bar {
+    height: 22px;
+    background: var(--mac-white);
+    border-bottom: 1px solid var(--mac-black);
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    cursor: grab;
+    user-select: none;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .title-bar::before, .title-bar::after {
+    content: '';
+    flex: 1;
+    height: 10px;
+    background:
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0px, transparent 1px,
+        #000 1px, #000 2px,
+        transparent 2px, transparent 3px
+      );
+    margin: 0 6px;
+  }
+
+  .title-bar-text {
+    font-weight: bold;
+    font-size: 12px;
+    text-align: center;
+    white-space: nowrap;
+    padding: 0 4px;
+    background: var(--mac-white);
+    position: relative;
+    z-index: 1;
+  }
+
+  .close-box {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #000;
+    background: var(--mac-white);
+    cursor: pointer;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+  .close-box:active {
+    background: var(--mac-black);
+  }
+
+  .resize-box {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #000;
+    background: var(--mac-white);
+    cursor: pointer;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+  .resize-box::after {
+    content: '';
+    position: absolute;
+    right: 1px;
+    bottom: 1px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid #000;
+    border-bottom: 2px solid #000;
+  }
+
+  /* ========== SCROLLBAR ========== */
+  .scroll-container {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+  }
+
+  .scroll-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+  }
+  .scroll-content::-webkit-scrollbar { display: none; }
+
+  .scrollbar-track {
+    width: 16px;
+    background:
+      repeating-conic-gradient(#999 0% 25%, #fff 0% 50%) 0 0 / 2px 2px;
+    border-left: 1px solid #000;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
+  .scrollbar-btn {
+    width: 15px;
+    height: 15px;
+    background: var(--mac-white);
+    border: 1px solid #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 8px;
+    flex-shrink: 0;
+  }
+
+  .scrollbar-thumb-area { flex: 1; position: relative; }
+
+  .scrollbar-thumb {
+    position: absolute;
+    left: 0;
+    right: 0;
+    min-height: 20px;
+    background: var(--mac-white);
+    border: 1px solid #000;
+    cursor: pointer;
+  }
+
+  /* ========== SIDEBAR WINDOW ========== */
+  #sidebar-window {
+    top: 28px; left: 6px;
+    width: 260px;
+    bottom: 6px;
+  }
+
+  .sidebar-inner {
+    padding: 0;
+  }
+
+  .nav-section-title {
+    padding: 4px 10px;
+    font-weight: bold;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    background: var(--mac-black);
+    color: var(--mac-white);
+    border-bottom: 1px solid #000;
+  }
+
+  .nav-item {
+    padding: 3px 10px 3px 20px;
+    cursor: pointer;
+    border-bottom: 1px dotted #ccc;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .nav-item:hover { background: var(--mac-black); color: var(--mac-white); }
+  .nav-item.active { background: var(--mac-black); color: var(--mac-white); }
+
+  .nav-item .icon {
+    font-size: 11px;
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .nav-item:hover .icon, .nav-item.active .icon { color: var(--mac-white); }
+
+  .nav-item .badge {
+    margin-left: auto;
+    font-size: 9px;
+    background: var(--mac-black);
+    color: var(--mac-white);
+    padding: 0 4px;
+    border-radius: 2px;
+  }
+  .nav-item:hover .badge, .nav-item.active .badge {
+    background: var(--mac-white);
+    color: var(--mac-black);
+  }
+
+  /* ========== MAIN WINDOW ========== */
+  #main-window {
+    top: 28px; left: 272px;
+    right: 6px;
+    bottom: 6px;
+  }
+
+  /* ========== TOOLBAR ========== */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    padding: 3px 6px;
+    gap: 4px;
+    border-bottom: 1px solid #000;
+    background: var(--mac-white);
+    flex-shrink: 0;
+  }
+
+  .toolbar-btn {
+    height: 20px;
+    padding: 0 8px;
+    border: 1px solid #000;
+    background: var(--mac-white);
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    box-shadow: var(--btn-shadow);
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .toolbar-btn:active {
+    box-shadow: var(--btn-pressed);
+    transform: translate(1px, 1px);
+  }
+  .toolbar-btn:disabled {
+    color: var(--mac-dark-gray);
+    cursor: default;
+  }
+
+  .search-box-wrapper {
+    flex: 1;
+    position: relative;
+  }
+
+  .search-box {
+    width: 100%;
+    height: 20px;
+    border: 2px inset #888;
+    padding: 0 22px 0 6px;
+    font-family: inherit;
+    font-size: 12px;
+    background: var(--mac-white);
+    outline: none;
+  }
+
+  .search-clear {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+    border: 1px solid #999;
+    background: #eee;
+    font-size: 9px;
+    line-height: 12px;
+    text-align: center;
+    cursor: pointer;
+    display: none;
+  }
+  .search-clear.visible { display: block; }
+
+  /* ========== BREADCRUMBS ========== */
+  .breadcrumbs {
+    padding: 3px 10px;
+    font-size: 10px;
+    color: var(--mac-dark-gray);
+    border-bottom: 1px solid #ddd;
+    background: #f8f8f8;
+    flex-shrink: 0;
+  }
+  .breadcrumbs span { cursor: pointer; }
+  .breadcrumbs span:hover { text-decoration: underline; }
+
+  /* ========== CONTENT ========== */
+  .content-area {
+    padding: 16px 20px;
+    line-height: 1.6;
+    font-size: 12px;
+  }
+
+  .content-area h1 {
+    font-size: 18px;
+    border-bottom: 2px solid #000;
+    padding-bottom: 4px;
+    margin-bottom: 12px;
+  }
+
+  .content-area h2 {
+    font-size: 14px;
+    margin-top: 16px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 2px;
+  }
+
+  .content-area h3 {
+    font-size: 12px;
+    font-weight: bold;
+    margin-top: 12px;
+    margin-bottom: 4px;
+  }
+
+  .content-area p {
+    margin-bottom: 10px;
+  }
+
+  .content-area a {
+    color: var(--mac-black);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .content-area a:hover {
+    background: var(--mac-black);
+    color: var(--mac-white);
+  }
+
+  .content-area code, .content-area pre {
+    font-family: "Monaco", "Courier", monospace;
+    font-size: 11px;
+    background: #f0f0f0;
+    border: 1px solid #ccc;
+  }
+
+  .content-area code {
+    padding: 0 3px;
+  }
+
+  .content-area pre {
+    padding: 8px 10px;
+    margin: 8px 0;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.4;
+    position: relative;
+  }
+
+  .content-area pre .copy-btn {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    font-size: 9px;
+    padding: 1px 5px;
+    border: 1px solid #999;
+    background: #fff;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .content-area pre .copy-btn:hover { background: #ddd; }
+
+  .content-area ul, .content-area ol {
+    margin: 6px 0 10px 20px;
+  }
+
+  .content-area li {
+    margin-bottom: 3px;
+  }
+
+  .content-area table {
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 11px;
+    width: 100%;
+  }
+
+  .content-area th, .content-area td {
+    border: 1px solid #000;
+    padding: 3px 6px;
+    text-align: left;
+  }
+
+  .content-area th {
+    background: var(--mac-black);
+    color: var(--mac-white);
+    font-weight: bold;
+  }
+
+  .content-area .note-box {
+    border: 2px solid #000;
+    padding: 8px 10px;
+    margin: 10px 0;
+    background: #f8f8f0;
+    position: relative;
+  }
+  .content-area .note-box::before {
+    content: 'Note';
+    position: absolute;
+    top: -8px;
+    left: 8px;
+    background: #f8f8f0;
+    padding: 0 4px;
+    font-weight: bold;
+    font-size: 10px;
+  }
+
+  .content-area .tip-box {
+    border: 2px solid #000;
+    padding: 8px 10px;
+    margin: 10px 0;
+    background: #f0f8f0;
+    position: relative;
+  }
+  .content-area .tip-box::before {
+    content: '★ Tip';
+    position: absolute;
+    top: -8px;
+    left: 8px;
+    background: #f0f8f0;
+    padding: 0 4px;
+    font-weight: bold;
+    font-size: 10px;
+  }
+
+  /* ========== SEARCH RESULTS ========== */
+  .search-results {
+    padding: 10px 16px;
+  }
+
+  .search-results-header {
+    font-weight: bold;
+    border-bottom: 2px solid #000;
+    padding-bottom: 4px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .search-result-item {
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    margin-bottom: 6px;
+    cursor: pointer;
+    background: #fafafa;
+  }
+  .search-result-item:hover {
+    background: var(--mac-black);
+    color: var(--mac-white);
+    border-color: #000;
+  }
+
+  .search-result-item .result-title {
+    font-weight: bold;
+    font-size: 12px;
+  }
+
+  .search-result-item .result-section {
+    font-size: 10px;
+    color: #666;
+    margin-top: 1px;
+  }
+  .search-result-item:hover .result-section { color: #ccc; }
+
+  .search-result-item .result-snippet {
+    font-size: 11px;
+    margin-top: 3px;
+    color: #444;
+  }
+  .search-result-item:hover .result-snippet { color: #ddd; }
+
+  mark {
+    background: #ffff00;
+    color: #000;
+    padding: 0 1px;
+  }
+  .search-result-item:hover mark {
+    background: #fff;
+    color: #000;
+  }
+
+  /* ========== STATUS BAR ========== */
+  .status-bar {
+    height: 18px;
+    border-top: 1px solid #000;
+    background: var(--mac-white);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    font-size: 10px;
+    color: var(--mac-dark-gray);
+    flex-shrink: 0;
+    gap: 12px;
+  }
+  .status-bar .spacer { flex: 1; }
+
+  /* ========== BOOKMARKS WINDOW ========== */
+  .dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.15);
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .dialog-overlay.visible { display: flex; }
+
+  .dialog-window {
+    background: var(--mac-white);
+    border: var(--border);
+    box-shadow: 4px 4px 0px #000;
+    min-width: 300px;
+  }
+
+  .dialog-window .title-bar { cursor: default; }
+
+  .dialog-body {
+    padding: 14px;
+  }
+
+  .dialog-btn {
+    height: 22px;
+    min-width: 60px;
+    padding: 0 12px;
+    border: 2px solid #000;
+    background: var(--mac-white);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: var(--btn-shadow);
+    border-radius: 4px;
+  }
+  .dialog-btn:active {
+    box-shadow: var(--btn-pressed);
+    transform: translate(1px, 1px);
+  }
+  .dialog-btn.primary {
+    background: var(--mac-black);
+    color: var(--mac-white);
+    border-color: #000;
+  }
+
+  .bookmark-item {
+    display: flex;
+    align-items: center;
+    padding: 3px 6px;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .bookmark-item:hover {
+    background: var(--mac-black);
+    color: var(--mac-white);
+  }
+  .bookmark-item .bm-remove {
+    margin-left: auto;
+    font-size: 9px;
+    color: #999;
+    cursor: pointer;
+  }
+  .bookmark-item:hover .bm-remove { color: #fff; }
+
+  /* ========== LOADING ANIMATION ========== */
+  @keyframes blink-cursor {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+
+  .loading-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 12px;
+    background: var(--mac-black);
+    animation: blink-cursor 0.8s steps(1) infinite;
+    vertical-align: middle;
+    margin-left: 4px;
+  }
+
+  /* ========== KEYBOARD SHORTCUT HINTS ========== */
+  kbd {
+    font-family: inherit;
+    font-size: 10px;
+    border: 1px solid #999;
+    padding: 0 3px;
+    background: #eee;
+    border-radius: 2px;
+  }
+
+  /* ========== RESIZE HANDLE ========== */
+  .resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 16px;
+    height: 16px;
+    cursor: nwse-resize;
+    background:
+      linear-gradient(135deg, transparent 60%, #000 60%, #000 65%, transparent 65%, transparent 75%, #000 75%, #000 80%, transparent 80%);
+  }
+
+  /* ========== WELCOME SPLASH ========== */
+  .splash-graphic {
+    text-align: center;
+    padding: 20px 0 10px;
+    font-size: 48px;
+    line-height: 1;
+  }
+
+  .splash-subtitle {
+    text-align: center;
+    font-size: 11px;
+    color: #666;
+    margin-bottom: 16px;
+  }
+
+  .feature-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 12px 0;
+  }
+
+  .feature-card {
+    border: 1px solid #000;
+    padding: 8px;
+    cursor: pointer;
+    text-align: center;
+  }
+  .feature-card:hover {
+    background: var(--mac-black);
+    color: var(--mac-white);
+  }
+  .feature-card .fc-icon { font-size: 20px; margin-bottom: 4px; }
+  .feature-card .fc-title { font-weight: bold; font-size: 11px; }
+  .feature-card .fc-desc { font-size: 10px; color: #666; margin-top: 2px; }
+  .feature-card:hover .fc-desc { color: #ccc; }
+
+  /* ========== TOC STYLES ========== */
+  .toc-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .toc-list li {
+    padding: 2px 0;
+  }
+  .toc-list a {
+    text-decoration: none;
+    font-size: 11px;
+  }
+  .toc-list a:hover { text-decoration: underline; }
+  .toc-list .indent-1 { padding-left: 16px; }
+  .toc-list .indent-2 { padding-left: 32px; }
+</style>
+</head>
+<body>
+
+<!-- ========== MENU BAR ========== -->
+<div class="menu-bar">
+  <div class="apple-logo">&#63743;</div>
+  <div class="menu-item" onclick="navigateTo('welcome')"><b>CozoDB</b></div>
+  <div class="menu-item" id="menu-file">File</div>
+  <div class="menu-item" id="menu-edit">Edit</div>
+  <div class="menu-item" id="menu-view">View</div>
+  <div class="menu-item" onclick="showBookmarks()">Bookmarks</div>
+  <div class="menu-item" onclick="showHelp()">Help</div>
+  <div class="menu-spacer"></div>
+  <div class="menu-clock" id="clock"></div>
+</div>
+
+<!-- ========== SIDEBAR WINDOW ========== -->
+<div class="window" id="sidebar-window">
+  <div class="title-bar">
+    <div class="close-box"></div>
+    <div class="title-bar-text">Navigation</div>
+    <div class="resize-box"></div>
+  </div>
+  <div class="scroll-container">
+    <div class="scroll-content" id="sidebar-scroll">
+      <div class="sidebar-inner">
+        <div class="nav-section-title">Getting Started</div>
+        <div class="nav-item active" data-page="welcome"><span class="icon">🏠</span> Welcome</div>
+        <div class="nav-item" data-page="tutorial"><span class="icon">📖</span> Tutorial <span class="badge">Start</span></div>
+
+        <div class="nav-section-title">Reference</div>
+        <div class="nav-item" data-page="queries"><span class="icon">🔍</span> Queries</div>
+        <div class="nav-item" data-page="stored"><span class="icon">💾</span> Stored Relations</div>
+        <div class="nav-item" data-page="vector"><span class="icon">📐</span> Proximity Searches</div>
+        <div class="nav-item" data-page="timetravel"><span class="icon">⏳</span> Time Travel</div>
+        <div class="nav-item" data-page="sysops"><span class="icon">⚙️</span> System Ops</div>
+
+        <div class="nav-section-title">Language</div>
+        <div class="nav-item" data-page="types"><span class="icon">📋</span> Types</div>
+        <div class="nav-item" data-page="execution"><span class="icon">▶️</span> Query Execution</div>
+        <div class="nav-item" data-page="tips"><span class="icon">💡</span> Tips</div>
+        <div class="nav-item" data-page="functions"><span class="icon">ƒ</span> Functions &amp; Operators</div>
+        <div class="nav-item" data-page="aggregations"><span class="icon">Σ</span> Aggregations</div>
+
+        <div class="nav-section-title">Advanced</div>
+        <div class="nav-item" data-page="algorithms"><span class="icon">🌐</span> Utilities &amp; Algorithms</div>
+        <div class="nav-item" data-page="beyond"><span class="icon">🚀</span> Beyond CozoScript</div>
+
+        <div class="nav-section-title">Notes &amp; Articles</div>
+        <div class="nav-item" data-page="usecases"><span class="icon">📝</span> Use Cases</div>
+        <div class="nav-item" data-page="performance"><span class="icon">⚡</span> Performance</div>
+        <div class="nav-item" data-page="everywhere"><span class="icon">🌍</span> Runs Everywhere</div>
+        <div class="nav-item" data-page="v07"><span class="icon">🆕</span> v0.7 Release Notes</div>
+      </div>
+    </div>
+    <div class="scrollbar-track">
+      <div class="scrollbar-btn">▲</div>
+      <div class="scrollbar-thumb-area"><div class="scrollbar-thumb" style="top:0;height:30%"></div></div>
+      <div class="scrollbar-btn">▼</div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== MAIN WINDOW ========== -->
+<div class="window" id="main-window">
+  <div class="title-bar" id="main-title-bar">
+    <div class="close-box"></div>
+    <div class="title-bar-text" id="main-title">CozoDB v0.7 — Documentation</div>
+    <div class="resize-box"></div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <button class="toolbar-btn" id="btn-back" disabled onclick="goBack()">◀ Back</button>
+    <button class="toolbar-btn" id="btn-forward" disabled onclick="goForward()">Fwd ▶</button>
+    <button class="toolbar-btn" onclick="toggleBookmark()">★ Mark</button>
+    <div class="search-box-wrapper">
+      <input type="text" class="search-box" id="search-input" placeholder="Search docs… (⌘K)" />
+      <div class="search-clear" id="search-clear" onclick="clearSearch()">✕</div>
+    </div>
+    <button class="toolbar-btn" onclick="doSearch()">Find</button>
+  </div>
+
+  <!-- Breadcrumbs -->
+  <div class="breadcrumbs" id="breadcrumbs">
+    <span onclick="navigateTo('welcome')">CozoDB</span> › <span>Welcome</span>
+  </div>
+
+  <!-- Content -->
+  <div class="scroll-container">
+    <div class="scroll-content" id="main-scroll">
+      <div id="content-wrapper"></div>
+    </div>
+    <div class="scrollbar-track" id="main-scrollbar-track">
+      <div class="scrollbar-btn" onclick="scrollUp()">▲</div>
+      <div class="scrollbar-thumb-area" id="main-thumb-area"><div class="scrollbar-thumb" id="main-thumb" style="top:0;height:20%"></div></div>
+      <div class="scrollbar-btn" onclick="scrollDown()">▼</div>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div class="status-bar">
+    <span id="status-page">Page: Welcome</span>
+    <span class="spacer"></span>
+    <span id="status-items">18 items</span>
+    <span>|</span>
+    <span id="status-bookmarks">0 bookmarks</span>
+  </div>
+
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ========== BOOKMARKS DIALOG ========== -->
+<div class="dialog-overlay" id="bookmarks-dialog">
+  <div class="dialog-window" style="width:340px">
+    <div class="title-bar">
+      <div class="close-box" onclick="hideBookmarks()"></div>
+      <div class="title-bar-text">Bookmarks</div>
+      <div class="resize-box"></div>
+    </div>
+    <div class="dialog-body">
+      <div id="bookmarks-list" style="min-height:40px;max-height:200px;overflow-y:auto;border:1px inset #888;padding:4px;margin-bottom:10px;background:#fff">
+        <div style="color:#999;font-size:11px;text-align:center;padding:10px">No bookmarks yet. Click ★ Mark to save pages.</div>
+      </div>
+      <div style="text-align:right">
+        <button class="dialog-btn primary" onclick="hideBookmarks()">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== HELP DIALOG ========== -->
+<div class="dialog-overlay" id="help-dialog">
+  <div class="dialog-window" style="width:360px">
+    <div class="title-bar">
+      <div class="close-box" onclick="hideHelp()"></div>
+      <div class="title-bar-text">Keyboard Shortcuts</div>
+      <div class="resize-box"></div>
+    </div>
+    <div class="dialog-body" style="font-size:11px;line-height:1.8">
+      <table style="width:100%;border-collapse:collapse">
+        <tr><td><kbd>⌘</kbd><kbd>K</kbd></td><td style="padding-left:12px">Focus search</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td style="padding-left:12px">Clear search / close dialogs</td></tr>
+        <tr><td><kbd>⌘</kbd><kbd>←</kbd></td><td style="padding-left:12px">Go back</td></tr>
+        <tr><td><kbd>⌘</kbd><kbd>→</kbd></td><td style="padding-left:12px">Go forward</td></tr>
+        <tr><td><kbd>⌘</kbd><kbd>D</kbd></td><td style="padding-left:12px">Bookmark page</td></tr>
+        <tr><td><kbd>⌘</kbd><kbd>B</kbd></td><td style="padding-left:12px">Show bookmarks</td></tr>
+      </table>
+      <div style="text-align:right;margin-top:12px">
+        <button class="dialog-btn primary" onclick="hideHelp()">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== PAGE DATA ==========
+const pages = {
+  welcome: {
+    title: 'Welcome',
+    breadcrumb: ['CozoDB', 'Welcome'],
+    content: `
+      <div class="content-area">
+        <div class="splash-graphic">⬡</div>
+        <h1 style="text-align:center;border:none;font-size:22px">CozoDB v0.7</h1>
+        <p class="splash-subtitle">A feature-rich, transactional, time-travel-enabled, relational-graph-vector database that uses Datalog for queries.</p>
+
+        <div class="feature-grid">
+          <div class="feature-card" onclick="navigateTo('tutorial')">
+            <div class="fc-icon">📖</div>
+            <div class="fc-title">Tutorial</div>
+            <div class="fc-desc">Learn the basics in your browser</div>
+          </div>
+          <div class="feature-card" onclick="navigateTo('queries')">
+            <div class="fc-icon">🔍</div>
+            <div class="fc-title">Queries</div>
+            <div class="fc-desc">CozoScript query language</div>
+          </div>
+          <div class="feature-card" onclick="navigateTo('vector')">
+            <div class="fc-icon">📐</div>
+            <div class="fc-title">Vector Search</div>
+            <div class="fc-desc">HNSW indices &amp; proximity</div>
+          </div>
+          <div class="feature-card" onclick="navigateTo('timetravel')">
+            <div class="fc-icon">⏳</div>
+            <div class="fc-title">Time Travel</div>
+            <div class="fc-desc">Query historical data</div>
+          </div>
+        </div>
+
+        <div class="note-box" style="margin-top:16px">
+          You can start immediately — the Tutorial runs entirely in your browser via WebAssembly. No installation needed!
+        </div>
+
+        <h2>Quick Taste</h2>
+        <p>Here's a Datalog query that finds all airports reachable from Frankfurt:</p>
+        <pre><code>reachable[to] := *route{fr: 'FRA', to}
+reachable[to] := reachable[stop], *route{fr: stop, to}
+?[count_unique(to)] := reachable[to]</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <h2>What's New in v0.7</h2>
+        <ul>
+          <li>MinHash-LSH near-duplicate indexing</li>
+          <li>Full-text search (FTS) indexing</li>
+          <li>JSON values and update operations</li>
+          <li>Improved HNSW vector search performance</li>
+        </ul>
+
+        <h2>Links</h2>
+        <p><a href="https://github.com/cozodb/cozo" target="_blank">GitHub Repository</a> · <a href="https://cozodb.github.io/wasm-demo/" target="_blank">Try in Browser (WASM)</a> · <a href="https://docs.cozodb.org/en/latest/" target="_blank">Full Docs (Web)</a></p>
+      </div>
+    `
+  },
+
+  tutorial: {
+    title: 'Tutorial',
+    breadcrumb: ['CozoDB', 'Getting Started', 'Tutorial'],
+    content: `
+      <div class="content-area">
+        <h1>Tutorial</h1>
+        <p>This tutorial will teach you the basics of using CozoDB. You can follow along without installing anything — just open <a href="https://cozodb.github.io/wasm-demo/" target="_blank">Cozo in WASM</a> in a separate window.</p>
+
+        <h2>Running the Tutorial</h2>
+        <ul>
+          <li>Run examples in your browser via WebAssembly — nothing to install</li>
+          <li>Or download the <code>cozo</code> executable and use REPL mode: <code>cozo repl</code></li>
+          <li>Python users: follow instructions at <a href="https://github.com/cozodb/pycozo" target="_blank">pycozo</a></li>
+        </ul>
+
+        <h2>Your First Query</h2>
+        <p>The simplest CozoScript query echoes an ad hoc relation back to you:</p>
+        <pre><code>?[x, y] := x = 1, y = 2
+?[x, y] := x = 'a', y = 'b'</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <p>This passes an ad-hoc relation (a list of tuples) to the database, and the database echoes it back. Strings in double quotes follow JSON rules.</p>
+
+        <div class="tip-box">
+          The output is JSON — how it appears depends on your environment.
+        </div>
+
+        <h2>Data Types</h2>
+        <table>
+          <tr><th>Type</th><th>Example</th><th>Description</th></tr>
+          <tr><td>Null</td><td><code>null</code></td><td>The null value</td></tr>
+          <tr><td>Bool</td><td><code>true</code>, <code>false</code></td><td>Boolean values</td></tr>
+          <tr><td>Number</td><td><code>42</code>, <code>3.14</code></td><td>Integers and floats</td></tr>
+          <tr><td>String</td><td><code>"hello"</code></td><td>UTF-8 strings</td></tr>
+          <tr><td>List</td><td><code>[1, 2, 3]</code></td><td>Ordered collections</td></tr>
+          <tr><td>Bytes</td><td><code>x'68656C6C6F'</code></td><td>Byte arrays</td></tr>
+        </table>
+
+        <h2>Loading Sample Data</h2>
+        <p>The tutorial uses an air routes dataset. Load it with this command in the WASM demo:</p>
+        <pre><code>::load_file('https://raw.githubusercontent.com/cozodb/cozo/main/cozo-core/tests/air-routes-latest.json')</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <p>Verify the relations are loaded:</p>
+        <pre><code>::relations</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <p>Lock tables to prevent accidental changes:</p>
+        <pre><code>::access_level read_only airport, contain, continent, country, route</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <h2>Querying Data</h2>
+        <p>View some airport data with a limit:</p>
+        <pre><code>?[code, city, desc, region, runways, lat, lon] :=
+    *airport{code, city, desc, region, runways, lat, lon}
+:limit 5</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <p>Airports with the most runways:</p>
+        <pre><code>?[code, city, desc, region, runways, lat, lon] :=
+    *airport{code, city, desc, region, runways, lat, lon}
+:order -runways
+:limit 10</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <h2>Graph Queries: Shortest Path</h2>
+        <p>Calculate the shortest path between two airports:</p>
+        <pre><code>starting[] <- [['LHR']]
+goal[] <- [['YPO']]
+?[starting, goal, distance, path] <~
+    KShortestPathYen(*route[], starting[], goal[], k: 10)</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <h2>Mutations</h2>
+        <p>CozoDB has two sets of mutation operators:</p>
+        <ul>
+          <li><code>:put</code> / <code>:rm</code> — always succeed, convenient for data science</li>
+          <li><code>:create</code> / <code>:update</code> / <code>:delete</code> — raise errors for more control</li>
+        </ul>
+
+        <p>Continue learning with the full <a onclick="navigateTo('queries')">Manual</a>!</p>
+      </div>
+    `
+  },
+
+  queries: {
+    title: 'Queries',
+    breadcrumb: ['CozoDB', 'Reference', 'Queries'],
+    content: `
+      <div class="content-area">
+        <h1>Queries</h1>
+        <p>CozoDB uses CozoScript — a Datalog-based query language — for all database interactions.</p>
+
+        <h2>Anatomy of a Query</h2>
+        <p>A CozoScript query consists of one or more rules, followed by optional query options:</p>
+        <pre><code>rule_head[bindings] := body_atom1, body_atom2, ...
+?[output_bindings] := rule_application
+
+:limit 10
+:offset 5
+:order field_name</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <h2>Inline Rules</h2>
+        <p>Inline rules form the backbone of CozoScript queries. The head declares variables, and the body provides atoms that bind those variables:</p>
+        <pre><code>?[name, age] := name = 'Alice', age = 30
+?[name, age] := name = 'Bob', age = 25</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <h2>Fixed Rules (Algorithms)</h2>
+        <p>Fixed rules invoke built-in algorithms using the <code>&lt;~</code> operator:</p>
+        <pre><code>?[node, distance] <~ ShortestPathDijkstra(*route[], start[], end[])</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+        <p>Each algorithm expects specific input relation shapes and has a determinate output arity.</p>
+
+        <h2>Query Options</h2>
+        <table>
+          <tr><th>Option</th><th>Description</th></tr>
+          <tr><td><code>:limit N</code></td><td>Maximum rows to return</td></tr>
+          <tr><td><code>:offset N</code></td><td>Skip first N rows</td></tr>
+          <tr><td><code>:order field</code></td><td>Sort ascending (prefix <code>-</code> for desc)</td></tr>
+          <tr><td><code>:timeout N</code></td><td>Timeout in seconds</td></tr>
+          <tr><td><code>:assert none</code></td><td>Assert empty result</td></tr>
+          <tr><td><code>:assert some</code></td><td>Assert non-empty result</td></tr>
+        </table>
+
+        <h2>Unification &amp; Binding</h2>
+        <p>Variables are bound by appearing in atoms. The same variable in different atoms performs a join. Unbound variables cause a compilation error.</p>
+
+        <div class="note-box">
+          Query options can appear before, after, or between rules — order doesn't matter.
+        </div>
+      </div>
+    `
+  },
+
+  stored: {
+    title: 'Stored Relations & Transactions',
+    breadcrumb: ['CozoDB', 'Reference', 'Stored Relations'],
+    content: `
+      <div class="content-area">
+        <h1>Stored Relations &amp; Transactions</h1>
+        <p>Stored relations are the persistent tables in CozoDB. They are created, modified, and queried using CozoScript.</p>
+
+        <h2>Creating Relations</h2>
+        <pre><code>::create my_relation {
+    key: String
+    =>
+    value: Float default 0.0,
+    tag: String?
+}</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+        <p>Columns before <code>=></code> form the key; columns after are values. Types and defaults are optional.</p>
+
+        <h2>Mutations</h2>
+        <pre><code>?[key, value] <- [['a', 1.0], ['b', 2.0]]
+:put my_relation {key, value}</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <h2>Triggers</h2>
+        <p>Stored relations can have triggers that fire on mutations, enabling cascading updates and validation.</p>
+
+        <h2>Transactions</h2>
+        <p>CozoDB uses MVCC (Multi-Version Concurrency Control) for transaction isolation. Multi-statement transactions allow complex atomic workflows.</p>
+      </div>
+    `
+  },
+
+  vector: {
+    title: 'Proximity Searches',
+    breadcrumb: ['CozoDB', 'Reference', 'Proximity Searches'],
+    content: `
+      <div class="content-area">
+        <h1>Proximity Searches</h1>
+        <p>CozoDB v0.6+ supports HNSW (Hierarchical Navigable Small World) vector indices, fully integrated into Datalog queries.</p>
+
+        <h2>Creating an HNSW Index</h2>
+        <pre><code>::hnsw create my_relation:my_index {
+    dim: 128,
+    m: 50,
+    dtype: F32,
+    distance: L2,
+    ef_construction: 200,
+    fields: [vector_field],
+    filter: active == true
+}</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <h2>Vector Search in Queries</h2>
+        <p>Search with vectors as pivots inside Datalog, enabling seamless joins with other data:</p>
+        <pre><code>?[key, distance] <~ HnswKnn(
+    *my_relation:my_index{key |
+        query: $input_vector,
+        k: 10,
+        ef: 200
+    }
+)</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <h2>Full-Text Search (FTS)</h2>
+        <p>Version 0.7 adds FTS indices for text search:</p>
+        <pre><code>::fts create docs:search_idx {
+    extractor: content,
+    tokenizer: Simple,
+    filters: [Lowercase, Stemmer('English')]
+}</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <h2>MinHash-LSH</h2>
+        <p>Also new in v0.7, LSH indices for near-duplicate detection:</p>
+        <pre><code>::lsh create docs:dedup_idx {
+    extractor: content,
+    tokenizer: Simple,
+    n_perm: 200,
+    target_threshold: 0.5
+}</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <div class="tip-box">
+          The HNSW index is a hierarchy of proximity graphs. CozoDB exposes these graphs for use with standard graph algorithms like community detection.
+        </div>
+      </div>
+    `
+  },
+
+  timetravel: {
+    title: 'Time Travel',
+    breadcrumb: ['CozoDB', 'Reference', 'Time Travel'],
+    content: `
+      <div class="content-area">
+        <h1>Time Travel</h1>
+        <p>CozoDB supports "time travel" — querying historical snapshots of your data at any past point in time.</p>
+
+        <h2>How It Works</h2>
+        <p>Every mutation to a stored relation is versioned. You can query any past version using the <code>@</code> operator.</p>
+        <pre><code>?[key, value] := *my_relation@'2023-01-15T00:00:00'{key, value}</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <h2>Timestamp Formats</h2>
+        <p>You can use ISO 8601 timestamps or relative notation:</p>
+        <pre><code>*relation@'2023-06-01T12:00:00'  # absolute
+*relation@'now - 1h'             # relative</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <h2>Use Cases</h2>
+        <ul>
+          <li>Audit trails and compliance</li>
+          <li>Debugging data issues by inspecting past states</li>
+          <li>Temporal analytics and trend analysis</li>
+          <li>Undo functionality for applications</li>
+        </ul>
+
+        <div class="note-box">
+          Time travel queries read from immutable snapshots and never block concurrent writes.
+        </div>
+      </div>
+    `
+  },
+
+  sysops: {
+    title: 'System Ops',
+    breadcrumb: ['CozoDB', 'Reference', 'System Ops'],
+    content: `
+      <div class="content-area">
+        <h1>System Operations</h1>
+        <p>System operations use the <code>::</code> prefix and manage database metadata, access control, and administration.</p>
+
+        <h2>Common Operations</h2>
+        <table>
+          <tr><th>Command</th><th>Description</th></tr>
+          <tr><td><code>::relations</code></td><td>List all stored relations</td></tr>
+          <tr><td><code>::columns my_rel</code></td><td>Show columns of a relation</td></tr>
+          <tr><td><code>::remove my_rel</code></td><td>Drop a relation</td></tr>
+          <tr><td><code>::access_level</code></td><td>Set read/write permissions</td></tr>
+          <tr><td><code>::running</code></td><td>List running queries</td></tr>
+          <tr><td><code>::kill query_id</code></td><td>Kill a running query</td></tr>
+        </table>
+
+        <h2>Backup &amp; Restore</h2>
+        <pre><code>::backup '/path/to/backup.db'
+::restore '/path/to/backup.db'</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+      </div>
+    `
+  },
+
+  types: {
+    title: 'Types',
+    breadcrumb: ['CozoDB', 'Language', 'Types'],
+    content: `
+      <div class="content-area">
+        <h1>Types</h1>
+        <p>CozoDB supports a rich set of data types for column definitions.</p>
+
+        <h2>Atomic Types</h2>
+        <table>
+          <tr><th>Type</th><th>Description</th></tr>
+          <tr><td><code>Bool</code></td><td>Boolean true/false</td></tr>
+          <tr><td><code>Int</code></td><td>64-bit integer</td></tr>
+          <tr><td><code>Float</code></td><td>64-bit floating point</td></tr>
+          <tr><td><code>String</code></td><td>UTF-8 string</td></tr>
+          <tr><td><code>Bytes</code></td><td>Byte array</td></tr>
+          <tr><td><code>Uuid</code></td><td>UUID value</td></tr>
+          <tr><td><code>Validity</code></td><td>Timestamp for time travel</td></tr>
+          <tr><td><code>Json</code></td><td>JSON values (v0.7+)</td></tr>
+        </table>
+
+        <h2>Composite Types</h2>
+        <p>Lists and tuples: <code>[Int]</code>, <code>(String, Float)</code>, <code>[Float; 128]</code> (fixed-size vector)</p>
+
+        <h2>Nullability</h2>
+        <p>Append <code>?</code> to allow null: <code>String?</code></p>
+      </div>
+    `
+  },
+
+  execution: {
+    title: 'Query Execution',
+    breadcrumb: ['CozoDB', 'Language', 'Query Execution'],
+    content: `
+      <div class="content-area">
+        <h1>Query Execution</h1>
+        <p>Understanding how CozoDB executes queries helps you write efficient Datalog programs.</p>
+
+        <h2>Evaluation Strategy</h2>
+        <p>CozoDB uses semi-naive evaluation for recursive Datalog, with stratification for negation and aggregation. Non-recursive rules are compiled into efficient joins.</p>
+
+        <h2>Compilation Pipeline</h2>
+        <ol>
+          <li>Parse CozoScript into AST</li>
+          <li>Stratify rules (handle negation &amp; aggregation)</li>
+          <li>Optimize join orders within each stratum</li>
+          <li>Execute bottom-up, stratum by stratum</li>
+          <li>Apply query options (:limit, :order, etc.)</li>
+        </ol>
+
+        <h2>Magic Set Optimization</h2>
+        <p>CozoDB applies magic set transformations to avoid computing unnecessary tuples in recursive queries.</p>
+      </div>
+    `
+  },
+
+  tips: {
+    title: 'Tips for Writing Queries',
+    breadcrumb: ['CozoDB', 'Language', 'Tips'],
+    content: `
+      <div class="content-area">
+        <h1>Tips for Writing Queries</h1>
+
+        <h2>Keep Rules Simple</h2>
+        <p>Break complex logic into multiple named rules. This improves readability and helps the optimizer.</p>
+
+        <h2>Use Indices Wisely</h2>
+        <p>Create covering indices for frequently queried column combinations. The key columns of stored relations are automatically indexed.</p>
+
+        <h2>Avoid Cartesian Products</h2>
+        <p>Ensure every rule body has connected variables — disconnected atoms produce cartesian products.</p>
+
+        <h2>Use Aggregations in Heads</h2>
+        <pre><code>?[dept, count(emp)] := *employee{dept, name: emp}</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <div class="tip-box">
+          Use <code>::explain</code> before a query to see the execution plan without running it.
+        </div>
+      </div>
+    `
+  },
+
+  functions: {
+    title: 'Functions & Operators',
+    breadcrumb: ['CozoDB', 'Language', 'Functions & Operators'],
+    content: `
+      <div class="content-area">
+        <h1>Functions &amp; Operators</h1>
+        <p>CozoScript provides a rich standard library of functions and operators.</p>
+
+        <h2>Arithmetic</h2>
+        <p><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>%</code> (mod), <code>^</code> (power)</p>
+
+        <h2>Comparison</h2>
+        <p><code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code></p>
+
+        <h2>String Functions</h2>
+        <table>
+          <tr><th>Function</th><th>Description</th></tr>
+          <tr><td><code>length(s)</code></td><td>String length</td></tr>
+          <tr><td><code>concat(a, b)</code></td><td>Concatenate strings</td></tr>
+          <tr><td><code>starts_with(s, prefix)</code></td><td>Check prefix</td></tr>
+          <tr><td><code>ends_with(s, suffix)</code></td><td>Check suffix</td></tr>
+          <tr><td><code>lowercase(s)</code></td><td>To lowercase</td></tr>
+          <tr><td><code>uppercase(s)</code></td><td>To uppercase</td></tr>
+          <tr><td><code>trim(s)</code></td><td>Trim whitespace</td></tr>
+          <tr><td><code>regex_matches(s, r)</code></td><td>Regex match</td></tr>
+        </table>
+
+        <h2>Math Functions</h2>
+        <p><code>abs</code>, <code>ceil</code>, <code>floor</code>, <code>round</code>, <code>sqrt</code>, <code>sin</code>, <code>cos</code>, <code>exp</code>, <code>ln</code></p>
+
+        <h2>Collection Functions</h2>
+        <p><code>append</code>, <code>prepend</code>, <code>slice</code>, <code>sort</code>, <code>reverse</code>, <code>contains</code>, <code>union</code>, <code>intersection</code>, <code>difference</code></p>
+      </div>
+    `
+  },
+
+  aggregations: {
+    title: 'Aggregations',
+    breadcrumb: ['CozoDB', 'Language', 'Aggregations'],
+    content: `
+      <div class="content-area">
+        <h1>Aggregations</h1>
+        <p>Aggregations are used in rule heads to summarize data.</p>
+
+        <h2>Built-in Aggregations</h2>
+        <table>
+          <tr><th>Aggregation</th><th>Description</th></tr>
+          <tr><td><code>count(x)</code></td><td>Count values</td></tr>
+          <tr><td><code>count_unique(x)</code></td><td>Count distinct values</td></tr>
+          <tr><td><code>sum(x)</code></td><td>Sum values</td></tr>
+          <tr><td><code>min(x)</code></td><td>Minimum value</td></tr>
+          <tr><td><code>max(x)</code></td><td>Maximum value</td></tr>
+          <tr><td><code>mean(x)</code></td><td>Arithmetic mean</td></tr>
+          <tr><td><code>collect(x)</code></td><td>Collect into list</td></tr>
+          <tr><td><code>group_count(x)</code></td><td>Count per group</td></tr>
+          <tr><td><code>variance(x)</code></td><td>Statistical variance</td></tr>
+          <tr><td><code>std_dev(x)</code></td><td>Standard deviation</td></tr>
+        </table>
+
+        <h2>Example</h2>
+        <pre><code>?[region, count(code), mean(runways)] :=
+    *airport{code, region, runways}
+:order -count(code)
+:limit 10</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+      </div>
+    `
+  },
+
+  algorithms: {
+    title: 'Utilities & Algorithms',
+    breadcrumb: ['CozoDB', 'Advanced', 'Utilities & Algorithms'],
+    content: `
+      <div class="content-area">
+        <h1>Utilities &amp; Algorithms</h1>
+        <p>CozoDB ships with a comprehensive set of graph algorithms as fixed rules.</p>
+
+        <h2>Path Finding</h2>
+        <ul>
+          <li><code>ShortestPathDijkstra</code> — weighted shortest path</li>
+          <li><code>ShortestPathAStar</code> — A* with heuristic</li>
+          <li><code>KShortestPathYen</code> — k-shortest paths</li>
+          <li><code>BreadthFirstSearch</code> — BFS traversal</li>
+          <li><code>DepthFirstSearch</code> — DFS traversal</li>
+        </ul>
+
+        <h2>Community Detection</h2>
+        <ul>
+          <li><code>CommunityDetectionLouvain</code> — Louvain method</li>
+          <li><code>LabelPropagation</code> — label propagation</li>
+        </ul>
+
+        <h2>Centrality</h2>
+        <ul>
+          <li><code>PageRank</code> — Google's PageRank</li>
+          <li><code>BetweennessCentrality</code></li>
+          <li><code>ClosenessCentrality</code></li>
+          <li><code>DegreeCentrality</code></li>
+        </ul>
+
+        <h2>Other</h2>
+        <ul>
+          <li><code>MinimumSpanningTreePrim</code></li>
+          <li><code>TopologicalSort</code></li>
+          <li><code>StronglyConnectedComponents</code> (Tarjan)</li>
+          <li><code>RandomWalk</code></li>
+        </ul>
+      </div>
+    `
+  },
+
+  beyond: {
+    title: 'Beyond CozoScript',
+    breadcrumb: ['CozoDB', 'Advanced', 'Beyond CozoScript'],
+    content: `
+      <div class="content-area">
+        <h1>Beyond CozoScript</h1>
+        <p>CozoDB can be embedded in many environments and accessed via various language bindings.</p>
+
+        <h2>Language Bindings</h2>
+        <table>
+          <tr><th>Language</th><th>Package</th></tr>
+          <tr><td>Python</td><td><code>pip install pycozo</code></td></tr>
+          <tr><td>Node.js</td><td><code>npm install cozo-node</code></td></tr>
+          <tr><td>Rust</td><td><code>cargo add cozo</code></td></tr>
+          <tr><td>Java/JVM</td><td>Maven artifact</td></tr>
+          <tr><td>Swift (iOS)</td><td>CocoaPods/SPM</td></tr>
+          <tr><td>C/C++</td><td>Shared library</td></tr>
+          <tr><td>Erlang/Elixir</td><td>NIF via Rustler</td></tr>
+          <tr><td>Browser</td><td>WASM module</td></tr>
+        </table>
+
+        <h2>Rust API</h2>
+        <pre><code>use cozo::*;
+
+let db = DbInstance::new("mem", "", Default::default()).unwrap();
+let script = "?[a] := a in [1, 2, 3]";
+let result = db.run_script(
+    script, Default::default(), ScriptMutability::Immutable
+).unwrap();</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+        <h2>Storage Backends</h2>
+        <ul>
+          <li>SQLite — easy to compile, low resource usage</li>
+          <li>RocksDB — high performance, high concurrency</li>
+          <li>Memory — purely in-memory, fastest option</li>
+          <li>Sled — pure Rust alternative</li>
+        </ul>
+      </div>
+    `
+  },
+
+  usecases: {
+    title: 'Use Cases',
+    breadcrumb: ['CozoDB', 'Notes', 'Use Cases'],
+    content: `
+      <div class="content-area">
+        <h1>Some Use Cases for Cozo</h1>
+        <ul>
+          <li><strong>Knowledge Graphs</strong> — model complex relationships with Datalog's natural graph traversal</li>
+          <li><strong>AI / LLM Memory</strong> — use as a "hippocampus" for LLMs with vector search + relational queries</li>
+          <li><strong>Recommendation Engines</strong> — combine graph algorithms with vector similarity</li>
+          <li><strong>Embedded Analytics</strong> — ship a full database inside your mobile or desktop app</li>
+          <li><strong>Temporal Data</strong> — audit trails, versioning, and time-series analysis with time travel</li>
+          <li><strong>Near-duplicate Detection</strong> — use MinHash-LSH indices (v0.7) for content deduplication</li>
+        </ul>
+      </div>
+    `
+  },
+
+  performance: {
+    title: 'On Performance',
+    breadcrumb: ['CozoDB', 'Notes', 'Performance'],
+    content: `
+      <div class="content-area">
+        <h1>On Performance</h1>
+        <p>CozoDB is designed to make no performance compromises despite its rich feature set.</p>
+        <h2>Key Optimizations</h2>
+        <ul>
+          <li>Written in Rust with zero-cost abstractions</li>
+          <li>RAII ensures memory is freed immediately after use</li>
+          <li>MVCC for lock-free concurrent reads</li>
+          <li>Semi-naive evaluation avoids redundant computation</li>
+          <li>Magic set transformations for recursive queries</li>
+          <li>Optimized HNSW implementation where basic vector operations are the bottleneck</li>
+        </ul>
+        <h2>WASM Performance</h2>
+        <p>The WebAssembly build runs at near-native speed for most operations, making it suitable for browser-based applications.</p>
+      </div>
+    `
+  },
+
+  everywhere: {
+    title: 'Cozo Runs Everywhere',
+    breadcrumb: ['CozoDB', 'Notes', 'Runs Everywhere'],
+    content: `
+      <div class="content-area">
+        <h1>Cozo Runs (Almost) Everywhere</h1>
+        <p>CozoDB's extreme embeddability means it can run in virtually any environment:</p>
+        <ul>
+          <li>Server — standalone HTTP server mode</li>
+          <li>Desktop — embedded in desktop apps</li>
+          <li>Mobile — iOS and Android via native bindings</li>
+          <li>Browser — full WASM build at near-native speed</li>
+          <li>Edge — lightweight enough for IoT and edge computing</li>
+        </ul>
+        <div class="note-box">
+          A database is almost surely "embedded" if you can use it on a phone that never connects to any network.
+        </div>
+      </div>
+    `
+  },
+
+  v07: {
+    title: 'Version 0.7 Release Notes',
+    breadcrumb: ['CozoDB', 'Notes', 'v0.7 Release'],
+    content: `
+      <div class="content-area">
+        <h1>Version 0.7 Release Notes</h1>
+        <h2>New Features</h2>
+        <ul>
+          <li><strong>MinHash-LSH Indexing</strong> — near-duplicate detection using locality-sensitive hashing</li>
+          <li><strong>Full-Text Search (FTS)</strong> — create FTS indices with configurable tokenizers and filters</li>
+          <li><strong>JSON Values</strong> — first-class JSON type with update operations</li>
+        </ul>
+        <h2>Improvements</h2>
+        <ul>
+          <li>Enhanced HNSW vector search performance</li>
+          <li>Better error messages and query diagnostics</li>
+          <li>Expanded platform support</li>
+        </ul>
+        <h2>Previous: v0.6 Highlights</h2>
+        <p>Version 0.6 introduced HNSW vector search integrated into Datalog, enabling seamless vector + relational + graph queries in a single system.</p>
+      </div>
+    `
+  }
+};
+
+// ========== APP STATE ==========
+let currentPage = 'welcome';
+let history = ['welcome'];
+let historyIndex = 0;
+let bookmarks = [];
+let searchMode = false;
+
+// ========== NAVIGATION ==========
+function navigateTo(page, pushHistory = true) {
+  if (!pages[page]) return;
+  searchMode = false;
+
+  // Update nav items
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === page);
+  });
+
+  // Render content
+  document.getElementById('content-wrapper').innerHTML = pages[page].content;
+  document.getElementById('main-title').textContent = pages[page].title + ' — CozoDB v0.7';
+  document.getElementById('breadcrumbs').innerHTML = pages[page].breadcrumb.map((b, i) =>
+    i < pages[page].breadcrumb.length - 1
+      ? `<span onclick="navigateTo('welcome')">${b}</span> › `
+      : `<span>${b}</span>`
+  ).join('');
+
+  document.getElementById('main-scroll').scrollTop = 0;
+  document.getElementById('status-page').textContent = 'Page: ' + pages[page].title;
+  currentPage = page;
+
+  if (pushHistory) {
+    history = history.slice(0, historyIndex + 1);
+    if (history[history.length - 1] !== page) {
+      history.push(page);
+      historyIndex = history.length - 1;
+    }
+  }
+
+  updateNavButtons();
+  updateScrollbar();
+}
+
+function goBack() {
+  if (historyIndex > 0) {
+    historyIndex--;
+    navigateTo(history[historyIndex], false);
+  }
+}
+
+function goForward() {
+  if (historyIndex < history.length - 1) {
+    historyIndex++;
+    navigateTo(history[historyIndex], false);
+  }
+}
+
+function updateNavButtons() {
+  document.getElementById('btn-back').disabled = historyIndex <= 0;
+  document.getElementById('btn-forward').disabled = historyIndex >= history.length - 1;
+}
+
+// ========== SEARCH ==========
+function doSearch() {
+  const query = document.getElementById('search-input').value.trim().toLowerCase();
+  if (!query) return;
+
+  searchMode = true;
+  const results = [];
+
+  for (const [key, page] of Object.entries(pages)) {
+    const text = page.content.replace(/<[^>]*>/g, ' ').toLowerCase();
+    const idx = text.indexOf(query);
+    if (idx >= 0) {
+      const start = Math.max(0, idx - 40);
+      const end = Math.min(text.length, idx + query.length + 60);
+      let snippet = (start > 0 ? '…' : '') + text.slice(start, end).trim() + (end < text.length ? '…' : '');
+      snippet = snippet.replace(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'), '<mark>$1</mark>');
+
+      results.push({
+        key,
+        title: page.title,
+        section: page.breadcrumb.join(' › '),
+        snippet
+      });
+    }
+  }
+
+  let html = '<div class="search-results">';
+  html += `<div class="search-results-header"><span>Search: "${query}"</span><span>${results.length} result${results.length !== 1 ? 's' : ''}</span></div>`;
+
+  if (results.length === 0) {
+    html += '<p style="text-align:center;color:#999;padding:20px">No results found. Try different keywords.</p>';
+  } else {
+    for (const r of results) {
+      html += `<div class="search-result-item" onclick="navigateTo('${r.key}')">
+        <div class="result-title">${r.title}</div>
+        <div class="result-section">${r.section}</div>
+        <div class="result-snippet">${r.snippet}</div>
+      </div>`;
+    }
+  }
+  html += '</div>';
+
+  document.getElementById('content-wrapper').innerHTML = html;
+  document.getElementById('main-title').textContent = 'Search Results — CozoDB v0.7';
+  document.getElementById('breadcrumbs').innerHTML = '<span onclick="navigateTo(\'welcome\')">CozoDB</span> › <span>Search</span>';
+  document.getElementById('status-page').textContent = 'Search: ' + results.length + ' results';
+
+  document.getElementById('search-clear').classList.add('visible');
+}
+
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-clear').classList.remove('visible');
+  if (searchMode) navigateTo(currentPage);
+}
+
+document.getElementById('search-input').addEventListener('input', function() {
+  document.getElementById('search-clear').classList.toggle('visible', this.value.length > 0);
+});
+
+document.getElementById('search-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doSearch();
+  if (e.key === 'Escape') { clearSearch(); this.blur(); }
+});
+
+// ========== BOOKMARKS ==========
+function toggleBookmark() {
+  const idx = bookmarks.indexOf(currentPage);
+  if (idx >= 0) {
+    bookmarks.splice(idx, 1);
+  } else {
+    bookmarks.push(currentPage);
+  }
+  document.getElementById('status-bookmarks').textContent = bookmarks.length + ' bookmarks';
+  renderBookmarks();
+}
+
+function showBookmarks() {
+  renderBookmarks();
+  document.getElementById('bookmarks-dialog').classList.add('visible');
+}
+function hideBookmarks() {
+  document.getElementById('bookmarks-dialog').classList.remove('visible');
+}
+
+function renderBookmarks() {
+  const list = document.getElementById('bookmarks-list');
+  if (bookmarks.length === 0) {
+    list.innerHTML = '<div style="color:#999;font-size:11px;text-align:center;padding:10px">No bookmarks yet. Click ★ Mark to save pages.</div>';
+    return;
+  }
+  list.innerHTML = bookmarks.map(bk =>
+    `<div class="bookmark-item" onclick="navigateTo('${bk}');hideBookmarks()">
+      <span>📄 ${pages[bk].title}</span>
+      <span class="bm-remove" onclick="event.stopPropagation();removeBookmark('${bk}')">✕</span>
+    </div>`
+  ).join('');
+}
+
+function removeBookmark(page) {
+  bookmarks = bookmarks.filter(b => b !== page);
+  document.getElementById('status-bookmarks').textContent = bookmarks.length + ' bookmarks';
+  renderBookmarks();
+}
+
+// ========== HELP ==========
+function showHelp() { document.getElementById('help-dialog').classList.add('visible'); }
+function hideHelp() { document.getElementById('help-dialog').classList.remove('visible'); }
+
+// ========== COPY CODE ==========
+function copyCode(btn) {
+  const pre = btn.parentElement;
+  const code = pre.querySelector('code').textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1200);
+  });
+}
+
+// ========== CLOCK ==========
+function updateClock() {
+  const now = new Date();
+  const h = now.getHours();
+  const m = now.getMinutes().toString().padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  document.getElementById('clock').textContent = `${h12}:${m} ${ampm}`;
+}
+setInterval(updateClock, 10000);
+updateClock();
+
+// ========== SCROLLBAR SYNC ==========
+function updateScrollbar() {
+  const el = document.getElementById('main-scroll');
+  const thumb = document.getElementById('main-thumb');
+  const area = document.getElementById('main-thumb-area');
+  if (!el || !thumb || !area) return;
+
+  const ratio = el.clientHeight / el.scrollHeight;
+  const thumbH = Math.max(20, ratio * area.clientHeight);
+  thumb.style.height = thumbH + 'px';
+
+  const scrollRatio = el.scrollTop / (el.scrollHeight - el.clientHeight || 1);
+  thumb.style.top = (scrollRatio * (area.clientHeight - thumbH)) + 'px';
+}
+
+document.getElementById('main-scroll').addEventListener('scroll', updateScrollbar);
+window.addEventListener('resize', updateScrollbar);
+
+function scrollUp() {
+  document.getElementById('main-scroll').scrollBy(0, -60);
+}
+function scrollDown() {
+  document.getElementById('main-scroll').scrollBy(0, 60);
+}
+
+// ========== KEYBOARD SHORTCUTS ==========
+document.addEventListener('keydown', function(e) {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    document.getElementById('search-input').focus();
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
+    e.preventDefault();
+    toggleBookmark();
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+    e.preventDefault();
+    showBookmarks();
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowLeft') {
+    e.preventDefault();
+    goBack();
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowRight') {
+    e.preventDefault();
+    goForward();
+  }
+  if (e.key === 'Escape') {
+    hideBookmarks();
+    hideHelp();
+  }
+});
+
+// ========== NAV ITEM CLICKS ==========
+document.querySelectorAll('.nav-item[data-page]').forEach(el => {
+  el.addEventListener('click', () => navigateTo(el.dataset.page));
+});
+
+// ========== INIT ==========
+navigateTo('welcome');
+setTimeout(updateScrollbar, 100);
+</script>
+</body>
+</html>

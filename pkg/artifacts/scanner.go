@@ -1,7 +1,6 @@
 package artifacts
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -123,20 +122,45 @@ func extractHTMLTitle(path string) string {
 	return ""
 }
 
-var exportDefaultRe = regexp.MustCompile(`export\s+default\s+function\s+(\w+)`)
+var exportDefaultFunctionRe = regexp.MustCompile(`(?m)export\s+default\s+function\s+([A-Za-z_]\w*)`)
+var exportDefaultClassRe = regexp.MustCompile(`(?m)export\s+default\s+class\s+([A-Za-z_]\w*)`)
+var exportDefaultIdentifierRe = regexp.MustCompile(`(?m)export\s+default\s+([A-Za-z_]\w*)\s*;`)
 
 func extractJSXComponentName(path string) string {
-	f, err := os.Open(path)
+	content, err := os.ReadFile(path)
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
+	return extractJSXComponentNameFromSource(string(content))
+}
 
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		if m := exportDefaultRe.FindStringSubmatch(scanner.Text()); len(m) > 1 {
-			return m[1]
+func extractJSXComponentNameFromSource(source string) string {
+	if m := exportDefaultFunctionRe.FindStringSubmatch(source); len(m) > 1 {
+		return m[1]
+	}
+	if m := exportDefaultClassRe.FindStringSubmatch(source); len(m) > 1 {
+		return m[1]
+	}
+	if m := exportDefaultIdentifierRe.FindStringSubmatch(source); len(m) > 1 {
+		name := m[1]
+		if hasNamedJSXExport(source, name) {
+			return name
 		}
 	}
 	return ""
+}
+
+func hasNamedJSXExport(source string, name string) bool {
+	quoted := regexp.QuoteMeta(name)
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?m)function\s+` + quoted + `\s*\(`),
+		regexp.MustCompile(`(?m)(?:const|let|var)\s+` + quoted + `\b`),
+		regexp.MustCompile(`(?m)class\s+` + quoted + `\b`),
+	}
+	for _, pattern := range patterns {
+		if pattern.MatchString(source) {
+			return true
+		}
+	}
+	return false
 }
