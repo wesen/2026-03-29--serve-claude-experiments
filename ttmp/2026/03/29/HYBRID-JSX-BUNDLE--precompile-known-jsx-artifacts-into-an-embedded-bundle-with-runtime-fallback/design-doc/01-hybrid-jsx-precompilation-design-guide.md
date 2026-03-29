@@ -10,8 +10,14 @@ DocType: design-doc
 Intent: long-term
 Owners: []
 RelatedFiles:
+    - Path: pkg/jsx/bundle.go
+      Note: Bundle generation and content-hash manifest logic
+    - Path: pkg/jsx/module.go
+      Note: Shared JSX module-building logic used by compile-time and runtime paths
     - Path: pkg/server/jsx.go
       Note: Shared JSX normalization and mount logic
+    - Path: pkg/server/precompiled.go
+      Note: Embedded bundle loading and freshness checks
     - Path: pkg/server/server.go
       Note: Primary request routing and serving mode decisions
     - Path: pkg/server/templates/jsx-host.html
@@ -24,6 +30,7 @@ LastUpdated: 2026-03-29T10:27:05.2657629-04:00
 WhatFor: Explain the architecture, tradeoffs, and implementation plan for the hybrid build-time precompilation strategy.
 WhenToUse: When implementing, reviewing, or extending the embedded precompiled JSX bundle and runtime fallback path.
 ---
+
 
 
 # Hybrid JSX Precompilation Design Guide
@@ -65,7 +72,7 @@ Introduce an embedded precompiled bundle with these pieces:
 3. The generated files are stored inside `pkg/server/precompiled/` and committed.
 4. The server embeds that directory with `go:embed`.
 5. At request time, the server decides:
-   - use `/compiled/{name}.js` when the bundle contains the artifact and the current file hash matches the embedded source hash
+   - use `/compiled/{name}` when the bundle contains the artifact and the current file hash matches the embedded source hash
    - otherwise use the existing Babel host path `/jsx/{name}`
 
 This deliberately keeps watch mode simple: it continues to reload pages, and the request-time server logic decides whether the embedded compiled asset still applies.
@@ -94,7 +101,7 @@ This deliberately keeps watch mode simple: it continues to reload pages, and the
    - compiled `.js` module files
 3. Embed the generated bundle into the server package.
 4. Add a bundle loader plus hash-matching helper in the server.
-5. Add a `/compiled/{name}.js` route.
+5. Add a `/compiled/{name}` route.
 6. Update the JSX host template to switch between precompiled module mode and Babel mode.
 7. Add tests for generator output, hash match or mismatch behavior, and handler mode selection.
 8. Update docs and validation playbooks.

@@ -41,7 +41,7 @@ The running implementation diary lives here:
 
 Current status: **active**
 
-Design, implementation guide, task breakdown, and diary are being established first. Code work follows after the contract is written down.
+The hybrid JSX precompilation feature is implemented, documented, and validated. The remaining artifact in this ticket is the record of how the work was done.
 
 ## Topics
 

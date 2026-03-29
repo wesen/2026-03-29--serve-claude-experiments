@@ -10,8 +10,12 @@ DocType: playbook
 Intent: long-term
 Owners: []
 RelatedFiles:
+    - Path: pkg/jsx/bundle.go
+      Note: Generator behavior and output format for the embedded bundle
     - Path: pkg/server/jsx.go
       Note: Runtime fallback source generation and mount behavior
+    - Path: pkg/server/precompiled.go
+      Note: Operational validation depends on embedded bundle lookup here
     - Path: pkg/server/server.go
       Note: Operational validation depends on handler selection here
 ExternalSources: []
@@ -20,6 +24,7 @@ LastUpdated: 2026-03-29T10:27:05.268934355-04:00
 WhatFor: Give a step-by-step operational and implementation guide for understanding and modifying the hybrid JSX serving path.
 WhenToUse: When regenerating the precompiled bundle, debugging serving mode selection, or validating hybrid JSX behavior.
 ---
+
 
 
 # Hybrid JSX Precompilation Implementation Guide For Interns
@@ -49,7 +54,7 @@ go test ./...
 go build ./cmd/serve-artifacts
 tmux new-session -d -s hybrid-jsx 'cd /home/manuel/code/wesen/2026-03-29--serve-claude-experiments && ./serve-artifacts serve --dir ./imports --watch --port 8093'
 curl -s http://localhost:8093/view/retro-launcher
-curl -s http://localhost:8093/compiled/retro-launcher.js | head
+curl -s http://localhost:8093/compiled/retro-launcher | head
 # edit an existing JSX file or add a new one under imports/
 curl -s http://localhost:8093/view/retro-launcher
 tmux kill-session -t hybrid-jsx
@@ -57,7 +62,7 @@ tmux kill-session -t hybrid-jsx
 
 ## Exit Criteria
 
-- Known unchanged JSX artifacts use `/compiled/{name}.js`.
+- Known unchanged JSX artifacts use `/compiled/{name}`.
 - Changed or new JSX artifacts use `/jsx/{name}`.
 - HTML artifacts are unaffected.
 - `go test ./...` passes.
