@@ -2,6 +2,7 @@ package cmds
 
 import (
 	"context"
+	"strings"
 
 	"github.com/go-go-golems/glazed/pkg/cmds"
 	"github.com/go-go-golems/glazed/pkg/cmds/fields"
@@ -81,6 +82,12 @@ func (c *ListCommand) RunIntoGlazeProcessor(
 			types.MRP("filename", a.Filename),
 			types.MRP("type", a.Type),
 			types.MRP("title", a.Title),
+			types.MRP("description", a.Description),
+			types.MRP("tags", strings.Join(a.Tags, ", ")),
+			types.MRP("original_date", a.OriginalDate),
+			types.MRP("has_manifest", a.HasManifest),
+			types.MRP("manifest_path", a.ManifestPath),
+			types.MRP("manifest_error", a.ManifestError),
 			types.MRP("size", a.Size),
 			types.MRP("modified", a.ModifiedAt),
 		)

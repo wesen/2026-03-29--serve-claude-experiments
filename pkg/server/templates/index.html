@@ -57,6 +57,32 @@
     margin-bottom: 16px;
     font-size: 11px;
   }
+  .search-panel {
+    border: 1px solid #000;
+    padding: 10px 12px;
+    margin-bottom: 16px;
+    background: #f5f5f5;
+  }
+  .search-label {
+    display: block;
+    font-size: 11px;
+    font-weight: bold;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .search-input {
+    width: 100%;
+    border: 1px solid #000;
+    padding: 8px 10px;
+    font: inherit;
+    background: #fff;
+  }
+  .search-help {
+    margin-top: 6px;
+    color: #666;
+    font-size: 10px;
+  }
   .artifact-list {
     list-style: none;
   }
@@ -95,10 +121,48 @@
   .artifact-info a:hover {
     text-decoration: underline;
   }
+  .artifact-description {
+    margin-top: 6px;
+    color: #222;
+    font-size: 11px;
+    line-height: 1.35;
+  }
   .artifact-meta {
     font-size: 10px;
     color: #666;
-    margin-top: 2px;
+    margin-top: 6px;
+  }
+  .artifact-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  .tag {
+    border: 1px solid #000;
+    background: #efefef;
+    padding: 2px 6px;
+    font-size: 10px;
+  }
+  .artifact-links {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+    font-size: 10px;
+  }
+  .artifact-links a {
+    font-weight: normal;
+  }
+  .hidden {
+    display: none;
+  }
+  .no-results {
+    text-align: center;
+    color: #666;
+    padding: 20px;
+    border: 1px dashed #000;
+    margin-top: 12px;
   }
   .empty {
     text-align: center;
@@ -116,23 +180,92 @@
     <div class="content">
       <h1>Claude Artifacts</h1>
       <div class="subtitle">Serving from: {{.Dir}} &middot; {{len .Artifacts}} artifact{{if ne (len .Artifacts) 1}}s{{end}}</div>
+      <div class="search-panel">
+        <label class="search-label" for="artifact-filter">Filter Artifacts</label>
+        <input id="artifact-filter" class="search-input" type="text" list="artifact-suggestions" placeholder="Search by title, description, tag, filename, or date" autocomplete="off" />
+        <datalist id="artifact-suggestions"></datalist>
+        <div class="search-help">First pass only: type to filter locally in the browser. A richer search UX can layer on top of the same search bundle later.</div>
+      </div>
       {{if .Artifacts}}
       <ul class="artifact-list">
         {{range .Artifacts}}
-        <li class="artifact-item">
+        <li class="artifact-item" data-artifact-name="{{.Name}}">
           <div class="badge badge-{{.Type}}">{{.Type}}</div>
           <div class="artifact-info">
             <a href="/view/{{.Name}}">{{.Title}}</a>
-            <div class="artifact-meta">{{.Filename}} &middot; {{.Size | humanSize}} &middot; {{.ModifiedAt.Format "2006-01-02 15:04"}}</div>
+            {{if .Description}}<div class="artifact-description">{{.Description}}</div>{{end}}
+            <div class="artifact-meta">{{.Filename}}{{if .OriginalDate}} &middot; created {{.OriginalDate}}{{end}} &middot; {{.Size | humanSize}} &middot; {{.ModifiedAt.Format "2006-01-02 15:04"}}</div>
+            {{if .Tags}}
+            <div class="artifact-tags">
+              {{range .Tags}}<span class="tag">{{.}}</span>{{end}}
+            </div>
+            {{end}}
+            {{if .Links}}
+            <div class="artifact-links">
+              {{range .Links}}<a href="{{.URL}}" target="_blank" rel="noreferrer">{{.Label}}</a>{{end}}
+            </div>
+            {{end}}
           </div>
         </li>
         {{end}}
       </ul>
+      <div id="no-results" class="no-results hidden">No artifacts match the current filter.</div>
       {{else}}
       <div class="empty">No artifacts found. Drop .html or .jsx files into the directory.</div>
       {{end}}
     </div>
   </div>
+  <script>
+  (function() {
+    const input = document.getElementById("artifact-filter");
+    const suggestions = document.getElementById("artifact-suggestions");
+    const noResults = document.getElementById("no-results");
+    if (!input || !suggestions || !noResults) return;
+
+    const items = Array.from(document.querySelectorAll(".artifact-item"));
+    const itemMap = new Map(items.map((item) => [item.dataset.artifactName, item]));
+
+    fetch("/search-index.json")
+      .then((res) => {
+        if (!res.ok) throw new Error("search bundle request failed");
+        return res.json();
+      })
+      .then((docs) => {
+        const suggestionValues = new Set();
+        for (const doc of docs) {
+          if (doc.title) suggestionValues.add(doc.title);
+          if (doc.filename) suggestionValues.add(doc.filename);
+          if (Array.isArray(doc.tags)) {
+            for (const tag of doc.tags) suggestionValues.add(tag);
+          }
+        }
+        for (const value of Array.from(suggestionValues).sort((a, b) => a.localeCompare(b))) {
+          const option = document.createElement("option");
+          option.value = value;
+          suggestions.appendChild(option);
+        }
+
+        const applyFilter = () => {
+          const query = input.value.trim().toLowerCase();
+          let visible = 0;
+          for (const doc of docs) {
+            const item = itemMap.get(doc.name);
+            if (!item) continue;
+            const match = query === "" || (doc.search_text || "").includes(query);
+            item.classList.toggle("hidden", !match);
+            if (match) visible += 1;
+          }
+          noResults.classList.toggle("hidden", visible !== 0 || query === "");
+        };
+
+        input.addEventListener("input", applyFilter);
+        applyFilter();
+      })
+      .catch(() => {
+        // Keep the page functional even if the search bundle fails.
+      });
+  })();
+  </script>
   {{if .Watch}}<script>
 (function(){var es=new EventSource("/events");es.onmessage=function(e){if(e.data==="reload")location.reload()};es.onerror=function(){setTimeout(function(){location.reload()},2000)};})();
   </script>{{end}}

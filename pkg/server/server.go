@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -89,6 +90,7 @@ const reloadScript = `<script>
 func (s *Server) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleIndex)
+	mux.HandleFunc("GET /search-index.json", s.handleSearchIndex)
 	mux.HandleFunc("GET /view/{name}", s.handleView)
 	mux.HandleFunc("GET /raw/{name}", s.handleRaw)
 	mux.HandleFunc("GET /jsx/{name}", s.handleJSX)
@@ -135,6 +137,20 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		"Dir":       s.dir,
 		"Watch":     s.watch,
 	})
+}
+
+func (s *Server) handleSearchIndex(w http.ResponseWriter, r *http.Request) {
+	arts, err := s.scanner.Scan()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err := json.NewEncoder(w).Encode(buildSearchDocuments(arts)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
