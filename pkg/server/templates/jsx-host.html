@@ -32,6 +32,9 @@
 <body>
   <div class="artifact-nav"><a href="/">&#x25C0; Index</a></div>
   <div id="root"></div>
+  {{if .Watch}}<script>
+(function(){var es=new EventSource("/events");es.onmessage=function(e){if(e.data==="reload")location.reload()};es.onerror=function(){setTimeout(function(){location.reload()},2000)};})();
+  </script>{{end}}
   <script type="text/babel" data-type="module">
 {{.JSXSource}}
 

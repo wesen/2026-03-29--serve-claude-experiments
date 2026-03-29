@@ -133,5 +133,8 @@
       {{end}}
     </div>
   </div>
+  {{if .Watch}}<script>
+(function(){var es=new EventSource("/events");es.onmessage=function(e){if(e.data==="reload")location.reload()};es.onerror=function(){setTimeout(function(){location.reload()},2000)};})();
+  </script>{{end}}
 </body>
 </html>

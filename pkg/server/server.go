@@ -22,14 +22,17 @@ type Server struct {
 	scanner         *artifacts.Scanner
 	dir             string
 	port            int
+	watch           bool
+	watcher         *watcher
 	indexTemplate   *template.Template
 	jsxHostTemplate *template.Template
 }
 
 // Config holds server configuration.
 type Config struct {
-	Dir  string
-	Port int
+	Dir   string
+	Port  int
+	Watch bool
 }
 
 var templateFuncs = template.FuncMap{
@@ -61,14 +64,26 @@ func New(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("parsing jsx-host template: %w", err)
 	}
 
+	var w *watcher
+	if cfg.Watch {
+		w = newWatcher(cfg.Dir)
+	}
+
 	return &Server{
 		scanner:         scanner,
 		dir:             cfg.Dir,
 		port:            cfg.Port,
+		watch:           cfg.Watch,
+		watcher:         w,
 		indexTemplate:   indexTmpl,
 		jsxHostTemplate: jsxHostTmpl,
 	}, nil
 }
+
+// reloadScript is injected into served pages when watch mode is enabled.
+const reloadScript = `<script>
+(function(){var es=new EventSource("/events");es.onmessage=function(e){if(e.data==="reload")location.reload()};es.onerror=function(){setTimeout(function(){location.reload()},2000)};})();
+</script>`
 
 // Run starts the HTTP server and blocks until the context is cancelled.
 func (s *Server) Run(ctx context.Context) error {
@@ -76,6 +91,16 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /view/{name}", s.handleView)
 	mux.HandleFunc("GET /raw/{name}", s.handleRaw)
+
+	if s.watch && s.watcher != nil {
+		mux.HandleFunc("GET /events", s.watcher.handleSSE)
+		go func() {
+			if err := s.watcher.start(ctx); err != nil {
+				log.Printf("Watcher error: %v", err)
+			}
+		}()
+		log.Printf("Watch mode enabled — pages will auto-reload on changes")
+	}
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
@@ -107,6 +132,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	s.indexTemplate.Execute(w, map[string]interface{}{
 		"Artifacts": arts,
 		"Dir":       s.dir,
+		"Watch":     s.watch,
 	})
 }
 
@@ -128,7 +154,11 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		}
 		// Inject a floating back-to-index nav bar before </body>
 		navBar := `<div style="position:fixed;top:8px;right:8px;z-index:99999;font-family:'Geneva','Helvetica Neue',sans-serif;font-size:11px;background:#fff;border:2px solid #000;box-shadow:2px 2px 0 #000;padding:4px 10px;cursor:pointer;opacity:0.7;transition:opacity 0.2s" onmouseover="this.style.opacity='1';this.style.background='#000';this.style.color='#fff'" onmouseout="this.style.opacity='0.7';this.style.background='#fff';this.style.color='#000'"><a href="/" style="text-decoration:none;color:inherit">&#x25C0; Index</a></div>`
-		modified := strings.Replace(string(htmlContent), "</body>", navBar+"</body>", 1)
+		inject := navBar
+		if s.watch {
+			inject += reloadScript
+		}
+		modified := strings.Replace(string(htmlContent), "</body>", inject+"</body>", 1)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write([]byte(modified))
 
@@ -146,6 +176,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 			"Title":     artifact.Title,
 			"Name":      artifact.Name,
 			"JSXSource": template.JS(safeSource),
+			"Watch":     s.watch,
 		})
 	}
 }
