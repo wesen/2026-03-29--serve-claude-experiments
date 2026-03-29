@@ -17,3 +17,10 @@ Implemented local companion manifests, backfilled manifests for every current im
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/search.go — Frontend search bundle
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/templates/index.html — First-pass metadata UI and filter field
 
+## 2026-03-29
+
+Added a repeatable playbook for manifest authoring, validation, and first-pass search/index smoke testing, including notes on the feasibility of replacing runtime Babel with build-time precompilation.
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/ttmp/2026/03/29/APP-MANIFESTS--add-per-app-manifest-json-metadata-support/playbook/01-manifest-authoring-and-validation-playbook.md — Operator runbook for manifest and search validation

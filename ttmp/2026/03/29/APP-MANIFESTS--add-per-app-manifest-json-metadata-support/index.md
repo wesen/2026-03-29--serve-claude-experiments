@@ -26,6 +26,9 @@ This ticket tracks support for companion manifest JSON files that sit next to ea
 The primary design document is:
 - [01-per-app-manifest-json-design-and-implementation-guide.md](./design-doc/01-per-app-manifest-json-design-and-implementation-guide.md)
 
+The current operator runbook is:
+- [01-manifest-authoring-and-validation-playbook.md](./playbook/01-manifest-authoring-and-validation-playbook.md)
+
 ## Key Links
 
 - **Related Files**: See frontmatter RelatedFiles field
@@ -35,7 +38,7 @@ The primary design document is:
 
 Current status: **active**
 
-The implementation guide is drafted. Tasks remain open.
+Implementation, diary, and playbook are now in place.
 
 ## Topics
 
