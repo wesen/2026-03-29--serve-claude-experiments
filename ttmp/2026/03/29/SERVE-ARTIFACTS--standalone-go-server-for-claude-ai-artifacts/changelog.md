@@ -23,3 +23,12 @@ Implemented full server (Phases 1-3): scanner, HTTP server, templates, serve+lis
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/artifacts/scanner.go — Artifact scanner with title extraction
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/server.go — HTTP server with index/view/raw handlers
 
+
+## 2026-03-29
+
+Added human-readable file sizes, back-to-index navigation, and file watcher with SSE auto-reload (commits 7dfe6b2, 0a07758)
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/watcher.go — File watcher with fsnotify + SSE broadcast
+

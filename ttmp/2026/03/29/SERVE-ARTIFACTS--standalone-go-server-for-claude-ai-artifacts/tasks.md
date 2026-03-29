@@ -17,3 +17,6 @@
 - [x] Create serve command (cmd/serve-artifacts/)
 - [x] Create list command with Glazed integration
 - [x] Test with real artifacts
+- [x] Add human-readable file sizes to index page
+- [x] Add back-to-index navigation for artifact pages
+- [x] Add file watcher with auto-reload (fsnotify + SSE)

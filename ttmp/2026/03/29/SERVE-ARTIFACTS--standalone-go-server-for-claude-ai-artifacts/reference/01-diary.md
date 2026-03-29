@@ -328,3 +328,166 @@ $ curl http://localhost:8091/           # → index page with 3 artifacts
 $ curl http://localhost:8091/view/QueryMac     # → HTML artifact served directly
 $ curl http://localhost:8091/view/business-app # → JSX host page with import map + Babel
 ```
+
+## Step 4: Polish — Human-Readable Sizes and Navigation
+
+Added two small but impactful UI improvements: human-readable file sizes on the index page and a floating "back to index" navigation button on all artifact pages.
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 3)
+
+**Assistant interpretation:** Implement polish tasks to improve the user experience of the artifact server.
+
+**Inferred user intent:** Make the server feel polished and usable as a daily tool.
+
+**Commit (code):** 7dfe6b2 — "Add human-readable file sizes and back-to-index navigation"
+
+### What I did
+
+- Added a `humanSize` template function to `pkg/server/server.go` that converts byte counts to human-readable strings (e.g., "51.2 KB")
+- Updated `templates/index.html` to use `{{.Size | humanSize}}` instead of raw byte counts
+- Added a floating navigation bar to HTML artifact pages by injecting a `<div>` before `</body>` with inline styles
+- Added the same navigation bar to the JSX host template as a static HTML element
+- Changed HTML serving from `http.ServeFile` to `os.ReadFile` + string replacement to enable injection
+
+### Why
+
+Raw byte counts are hard to scan. The back-to-index button solves the UX problem of navigating back from an artifact without using the browser back button.
+
+### What worked
+
+- Template functions via `template.FuncMap` are clean and composable
+- String replacement approach for HTML injection works reliably since all artifacts have a `</body>` tag
+- The floating nav bar uses inline styles to avoid conflicts with artifact CSS
+
+### What didn't work
+
+N/A — straightforward implementation.
+
+### What I learned
+
+- Switching from `http.ServeFile` to manual file reading + response writing was necessary for HTML injection. This loses some features (range requests, caching headers) but they're not needed for a dev tool.
+
+### What was tricky to build
+
+The CSS for the floating nav bar needed careful z-index management (99999) and opacity handling to avoid obscuring artifact content while remaining discoverable.
+
+### What warrants a second pair of eyes
+
+N/A — minor UI change.
+
+### What should be done in the future
+
+N/A
+
+### Code review instructions
+
+- Check `pkg/server/server.go` for the `humanSize` function and the HTML injection logic
+- Verify the nav bar CSS doesn't conflict with existing artifact styles
+
+### Technical details
+
+Human-readable size function:
+```go
+func humanSize(b int64) string {
+    const unit = 1024
+    if b < unit { return fmt.Sprintf("%d B", b) }
+    div, exp := int64(unit), 0
+    for n := b / unit; n >= unit; n /= unit { div *= unit; exp++ }
+    return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+```
+
+## Step 5: Polish — File Watcher with SSE Auto-Reload
+
+Implemented the most impactful polish feature: automatic browser reload when artifact files change. This uses fsnotify to watch the artifacts directory and Server-Sent Events (SSE) to push reload notifications to connected browsers.
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 3)
+
+**Assistant interpretation:** Implement the file watcher with auto-reload capability.
+
+**Inferred user intent:** Enable a fast edit-refresh loop when developing or modifying artifacts.
+
+**Commit (code):** 0a07758 — "Add file watcher with SSE-based auto-reload"
+
+### What I did
+
+- Added `fsnotify` dependency
+- Created `pkg/server/watcher.go` — a goroutine-safe file watcher that:
+  - Uses fsnotify to watch the artifacts directory
+  - Maintains a set of SSE client channels
+  - Broadcasts reload events when files change (write, create, remove)
+- Added `/events` SSE endpoint that streams `data: reload` events
+- Injected a small inline `<script>` into all served pages (index, HTML, JSX) that:
+  - Connects to `/events` via `EventSource`
+  - Reloads the page on `reload` messages
+  - Auto-reconnects with a 2-second delay on error
+- Added `--watch` / `-w` flag to the `serve` command
+- Updated `Config` struct to include `Watch bool`
+- Fixed `.gitignore` to use `/serve-artifacts` (anchored) instead of `serve-artifacts` (which also matched `cmd/serve-artifacts/`)
+
+### Why
+
+Auto-reload eliminates manual browser refreshing during artifact development. SSE was chosen over WebSockets because it's simpler (no upgrade handshake, unidirectional) and perfectly suited for this "server pushes events" use case.
+
+### What worked
+
+- The watcher/SSE architecture is clean: watcher broadcasts to channels, SSE handler reads from channel, browser reconnects automatically
+- The inline reload script is tiny (~150 bytes) and self-contained
+- fsnotify handles the platform-specific file watching (inotify on Linux, kqueue on macOS)
+
+### What didn't work
+
+- Initial `.gitignore` pattern `serve-artifacts` matched both the binary and `cmd/serve-artifacts/` directory, causing `git add` to fail. Fixed by anchoring with `/serve-artifacts`.
+
+### What I learned
+
+- `http.Flusher` interface is needed for SSE — must check `w.(http.Flusher)` and flush after each event
+- SSE format is simple: `data: <payload>\n\n` (two newlines to terminate the event)
+- fsnotify watches directories, not individual files — perfect for our use case
+
+### What was tricky to build
+
+The SSE client lifecycle management: clients connect, subscribe to a channel, and must be unsubscribed when they disconnect. Using `r.Context().Done()` to detect client disconnection works reliably.
+
+### What warrants a second pair of eyes
+
+- The watcher uses a non-blocking send (`select { case ch <- struct{}{}: default: }`) which means rapid file changes might be coalesced. This is actually desirable (no flooding) but should be documented.
+- No debouncing — editors that do save-rename-replace (like Vim) might trigger multiple events for one save.
+
+### What should be done in the future
+
+- Add debouncing (e.g., 100ms delay after last event before broadcasting)
+- Consider watching subdirectories recursively for multi-file artifact support
+
+### Code review instructions
+
+- Read `pkg/server/watcher.go` for the watcher + SSE implementation
+- Check `pkg/server/server.go` for the reload script injection and `/events` route registration
+- Test with: `./serve-artifacts serve --dir ./imports --watch --port 8080`
+- Verify: edit an artifact file → browser should reload automatically
+
+### Technical details
+
+**Watcher architecture:**
+```
+fsnotify.Watcher → watcher.broadcast() → channels → SSE handlers → browsers
+                                            ↑                        ↓
+                                     subscribe/unsubscribe      EventSource.onmessage → location.reload()
+```
+
+**Reload script (injected into all pages when --watch is active):**
+```javascript
+(function(){
+  var es = new EventSource("/events");
+  es.onmessage = function(e) {
+    if (e.data === "reload") location.reload();
+  };
+  es.onerror = function() {
+    setTimeout(function(){ location.reload() }, 2000);
+  };
+})();
+```
