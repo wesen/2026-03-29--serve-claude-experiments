@@ -191,14 +191,16 @@ func (s *Server) handleJSX(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Append auto-mount code that renders the default export into #root
-	mountCode := `
+	// Append auto-mount code that renders the default export into #root.
+	// Use the actual component name extracted from the file (e.g., App, EditorApp).
+	componentName := artifact.Title // scanner extracts the export default function name
+	mountCode := fmt.Sprintf(`
 
 // Auto-mount the default export
 import { createRoot } from "react-dom/client";
 const root = createRoot(document.getElementById("root"));
-root.render(<App />);
-`
+root.render(<%s />);
+`, componentName)
 
 	// Prepend React import — Babel's classic JSX transform compiles <div> to
 	// React.createElement("div", ...) which requires React in scope. The artifact
