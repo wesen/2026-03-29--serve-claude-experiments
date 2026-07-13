@@ -3,6 +3,7 @@ package artifacts
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -37,62 +38,89 @@ func NewScanner(dir string) *Scanner {
 	return &Scanner{dir: dir}
 }
 
-// Scan reads the directory and returns all artifacts.
+// Scan walks the directory tree (recursively) and returns all artifacts. An
+// artifact's Name is its slash-separated path relative to the root, without the
+// extension — so a top-level "business-app.jsx" keeps Name "business-app" (as
+// before), while a nested "abc123/artifacts/Calendar.jsx" gets a unique Name
+// "abc123/artifacts/Calendar". Companion manifests are matched by the same
+// relative key within the same directory.
 func (s *Scanner) Scan() ([]Artifact, error) {
-	entries, err := os.ReadDir(s.dir)
-	if err != nil {
-		return nil, fmt.Errorf("reading artifact directory: %w", err)
+	type fileEntry struct {
+		rel  string // slash path relative to root, without extension
+		abs  string
+		name string // base filename
+		typ  string
+		info os.FileInfo
 	}
 
-	manifests := make(map[string]string)
-	for _, entry := range entries {
-		if entry.IsDir() || !isManifestFile(entry.Name()) {
-			continue
+	var files []fileEntry
+	manifests := make(map[string]string) // rel-without-suffix -> manifest abs path
+
+	err := filepath.WalkDir(s.dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil // skip unreadable entries rather than aborting the whole scan
 		}
-		baseName := strings.TrimSuffix(entry.Name(), manifestSuffix)
-		absPath, _ := filepath.Abs(filepath.Join(s.dir, entry.Name()))
-		manifests[baseName] = absPath
+		if d.IsDir() {
+			if path != s.dir && shouldSkipDir(d.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, relErr := filepath.Rel(s.dir, path)
+		if relErr != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		abs, _ := filepath.Abs(path)
+
+		if isManifestFile(d.Name()) {
+			key := strings.TrimSuffix(rel, manifestSuffix)
+			manifests[key] = abs
+			return nil
+		}
+
+		var typ string
+		switch filepath.Ext(d.Name()) {
+		case ".html", ".htm":
+			typ = "html"
+		case ".jsx":
+			typ = "jsx"
+		default:
+			return nil
+		}
+		info, infoErr := d.Info()
+		if infoErr != nil {
+			return nil
+		}
+		files = append(files, fileEntry{
+			rel:  strings.TrimSuffix(rel, filepath.Ext(d.Name())),
+			abs:  abs,
+			name: d.Name(),
+			typ:  typ,
+			info: info,
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scanning artifact directory: %w", err)
 	}
 
 	var artifacts []Artifact
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		ext := filepath.Ext(entry.Name())
-		var artifactType string
-		switch ext {
-		case ".html", ".htm":
-			artifactType = "html"
-		case ".jsx":
-			artifactType = "jsx"
-		default:
-			continue
-		}
-
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-
-		name := strings.TrimSuffix(entry.Name(), ext)
-		absPath, _ := filepath.Abs(filepath.Join(s.dir, entry.Name()))
-		title := extractTitle(absPath, artifactType)
+	for _, fe := range files {
+		title := extractTitle(fe.abs, fe.typ)
 		if title == "" {
-			title = name
+			title = path.Base(fe.rel)
 		}
-
 		artifact := Artifact{
-			Name:       name,
-			Filename:   entry.Name(),
-			Type:       artifactType,
+			Name:       fe.rel,
+			Filename:   fe.name,
+			Type:       fe.typ,
 			Title:      title,
-			Size:       info.Size(),
-			ModifiedAt: info.ModTime(),
-			Path:       absPath,
+			Size:       fe.info.Size(),
+			ModifiedAt: fe.info.ModTime(),
+			Path:       fe.abs,
 		}
-
-		if manifestPath, ok := manifests[name]; ok {
+		if manifestPath, ok := manifests[fe.rel]; ok {
 			artifact.HasManifest = true
 			artifact.ManifestPath = manifestPath
 			manifest, err := loadManifest(manifestPath)
@@ -102,10 +130,18 @@ func (s *Scanner) Scan() ([]Artifact, error) {
 				applyManifest(&artifact, manifest)
 			}
 		}
-
 		artifacts = append(artifacts, artifact)
 	}
 	return artifacts, nil
+}
+
+// shouldSkipDir skips noise directories during the recursive walk.
+func shouldSkipDir(name string) bool {
+	switch name {
+	case "node_modules", ".git", ".svn", "__pycache__":
+		return true
+	}
+	return strings.HasPrefix(name, ".")
 }
 
 // FindByName finds an artifact by its name (filename without extension).

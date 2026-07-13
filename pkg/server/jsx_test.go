@@ -86,8 +86,8 @@ func TestMountJSXSourceAddsMountCode(t *testing.T) {
 	}
 	for _, want := range []string{
 		`import React from "react";`,
-		`import { createRoot } from "react-dom/client";`,
-		`root.render(React.createElement(__artifactDefault));`,
+		`import { createRoot as __artifactCreateRoot } from "react-dom/client";`,
+		`__artifactRoot.render(__artifactReactNS.createElement(__artifactDefault));`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected mounted source to contain %q, got %q", want, got)

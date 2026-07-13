@@ -15,6 +15,15 @@ var defaultExportAnonymousFunctionRe = regexp.MustCompile(`(?m)export\s+default\
 var defaultExportAnonymousClassRe = regexp.MustCompile(`(?m)export\s+default\s+class\b`)
 var defaultExportExpressionRe = regexp.MustCompile(`(?m)export\s+default\s+`)
 
+// defaultReactImportRe matches an artifact that already imports React as a default
+// binding (`import React from "react"` or `import React, { ... } from "react"`).
+// Modern Claude file-based artifacts include this; older ones relied on a global
+// React. We must not inject a second `import React` in the former case, or Babel
+// fails with "Identifier 'React' has already been declared".
+// [^;]*? crosses newlines (a negated class matches \n), so this also matches a
+// multi-line `import React, {\n  useState,\n} from "react";`.
+var defaultReactImportRe = regexp.MustCompile(`import\s+React\b[^;]*?\bfrom\s+['"]react['"]`)
+
 func PrepareSource(source string) (string, error) {
 	switch {
 	case defaultExportNamedFunctionRe.MatchString(source):
@@ -45,14 +54,21 @@ func BuildModuleSource(source string) (string, error) {
 	}
 
 	var b strings.Builder
-	b.WriteString("import React from \"react\";\n")
+	// Only inject a default React import when the artifact does not already import
+	// React itself; otherwise the two declarations collide.
+	if !defaultReactImportRe.MatchString(source) {
+		b.WriteString("import React from \"react\";\n")
+	}
 	b.WriteString(transformed)
+	// Use aliased bindings for the auto-mount so they never clash with the
+	// artifact's own imports (e.g. an artifact that imports createRoot).
 	b.WriteString(`
 
 // Auto-mount the default export
-import { createRoot } from "react-dom/client";
-const root = createRoot(document.getElementById("root"));
-root.render(React.createElement(__artifactDefault));
+import { createRoot as __artifactCreateRoot } from "react-dom/client";
+import * as __artifactReactNS from "react";
+const __artifactRoot = __artifactCreateRoot(document.getElementById("root"));
+__artifactRoot.render(__artifactReactNS.createElement(__artifactDefault));
 `)
 	return b.String(), nil
 }

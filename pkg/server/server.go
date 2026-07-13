@@ -98,10 +98,12 @@ func (s *Server) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /search-index.json", s.handleSearchIndex)
-	mux.HandleFunc("GET /view/{name}", s.handleView)
-	mux.HandleFunc("GET /raw/{name}", s.handleRaw)
-	mux.HandleFunc("GET /compiled/{name}", s.handleCompiledJSX)
-	mux.HandleFunc("GET /jsx/{name}", s.handleJSX)
+	// {name...} matches multi-segment names so artifacts in nested subdirectories
+	// (e.g. "<uuid>/artifacts/Calendar") resolve.
+	mux.HandleFunc("GET /view/{name...}", s.handleView)
+	mux.HandleFunc("GET /raw/{name...}", s.handleRaw)
+	mux.HandleFunc("GET /compiled/{name...}", s.handleCompiledJSX)
+	mux.HandleFunc("GET /jsx/{name...}", s.handleJSX)
 
 	if s.watch && s.watcher != nil {
 		mux.HandleFunc("GET /events", s.watcher.handleSSE)

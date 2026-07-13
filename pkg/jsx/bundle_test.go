@@ -42,7 +42,7 @@ func TestGenerateBundle(t *testing.T) {
 	compiled := string(compiledBytes)
 	for _, want := range []string{
 		`import React from "react";`,
-		`import { createRoot } from "react-dom/client";`,
+		`import { createRoot as __artifactCreateRoot } from "react-dom/client";`,
 		`React.createElement("div", null, "Hello")`,
 	} {
 		if !strings.Contains(compiled, want) {
