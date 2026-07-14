@@ -1,11 +1,13 @@
 package server
 
 import (
+	"archive/zip"
 	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -14,6 +16,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alecthomas/chroma/v2"
+	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
+	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/go-go-golems/serve-artifacts/pkg/artifacts"
 	"github.com/go-go-golems/serve-artifacts/pkg/userdata"
 )
@@ -192,6 +198,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /artifact/{name...}", s.handleArtifactPage)
 	mux.HandleFunc("GET /api/artifact/{name...}", s.handleArtifactJSON)
 	mux.HandleFunc("GET /transcript/{name...}", s.handleTranscript)
+	mux.HandleFunc("GET /highlight/{name...}", s.handleHighlight)
+	mux.HandleFunc("GET /session/{name...}", s.handleSession)
 
 	if s.watch && s.watcher != nil {
 		// Rebuild the index whenever the directory changes, before clients reload.
@@ -463,6 +471,9 @@ func atoiDefault(s string, def int) int {
 
 func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	// embed=1 is passed by the detail-page iframe; it suppresses the floating
+	// back-to-index nav bar, which is redundant (and covers content) inside a frame.
+	embed := r.URL.Query().Get("embed") == "1"
 
 	artifact, err := s.scanner.FindByName(name)
 	if err != nil {
@@ -477,9 +488,11 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		// Inject a floating back-to-index nav bar before </body>
-		navBar := `<div style="position:fixed;top:8px;right:8px;z-index:99999;font-family:'Geneva','Helvetica Neue',sans-serif;font-size:11px;background:#fff;border:2px solid #000;box-shadow:2px 2px 0 #000;padding:4px 10px;cursor:pointer;opacity:0.7;transition:opacity 0.2s" onmouseover="this.style.opacity='1';this.style.background='#000';this.style.color='#fff'" onmouseout="this.style.opacity='0.7';this.style.background='#fff';this.style.color='#000'"><a href="/" style="text-decoration:none;color:inherit">&#x25C0; Index</a></div>`
-		inject := navBar
+		// Inject a floating back-to-index nav bar before </body> (unless embedded).
+		inject := ""
+		if !embed {
+			inject = `<div style="position:fixed;top:8px;right:8px;z-index:99999;font-family:'Geneva','Helvetica Neue',sans-serif;font-size:11px;background:#fff;border:2px solid #000;box-shadow:2px 2px 0 #000;padding:4px 10px;cursor:pointer;opacity:0.7;transition:opacity 0.2s" onmouseover="this.style.opacity='1';this.style.background='#000';this.style.color='#fff'" onmouseout="this.style.opacity='0.7';this.style.background='#fff';this.style.color='#000'"><a href="/" style="text-decoration:none;color:inherit">&#x25C0; Index</a></div>`
+		}
 		if s.watch {
 			inject += reloadScript
 		}
@@ -505,6 +518,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 			"Title":      artifact.Title,
 			"Name":       artifact.Name,
 			"Watch":      s.watch,
+			"Embed":      embed,
 			"ScriptSrc":  scriptSrc,
 			"ScriptType": scriptType,
 			"LoadBabel":  loadBabel,
@@ -724,6 +738,97 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, art.TranscriptPath)
 }
 
+// handleHighlight returns the artifact's source as a self-contained,
+// syntax-highlighted HTML fragment (chroma with inline styles, so no external
+// stylesheet is needed). The detail page injects it into the source panel.
+func (s *Server) handleHighlight(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	art, err := s.scanner.FindByName(name)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	src, err := os.ReadFile(art.Path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	lexer := lexers.Match(art.Filename)
+	if lexer == nil {
+		lexer = lexers.Analyse(string(src))
+	}
+	if lexer == nil {
+		lexer = lexers.Fallback
+	}
+	lexer = chroma.Coalesce(lexer)
+	style := styles.Get("github")
+	if style == nil {
+		style = styles.Fallback
+	}
+	formatter := chromahtml.New(chromahtml.WithClasses(false), chromahtml.TabWidth(2))
+	iterator, err := lexer.Tokenise(nil, string(src))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := formatter.Format(w, style, iterator); err != nil {
+		log.Printf("highlight %s: %v", name, err)
+	}
+}
+
+// handleSession streams the whole conversation directory (transcript,
+// conversation.json, meta.json, and all reconstructed artifacts) as a zip, so
+// the entire session can be downloaded in one click. Returns 404 for artifacts
+// that did not come from a conversation export.
+func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	art, err := s.scanner.FindByName(name)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	convDir := ""
+	switch {
+	case art.TranscriptPath != "":
+		convDir = filepath.Dir(art.TranscriptPath)
+	case art.FromExport:
+		// Artifacts live at <convDir>/artifacts/<file>; go up two levels.
+		convDir = filepath.Dir(filepath.Dir(art.Path))
+	default:
+		http.Error(w, "no conversation session for this artifact", http.StatusNotFound)
+		return
+	}
+	base := art.SourceConversationUUID
+	if base == "" {
+		base = filepath.Base(convDir)
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", base+".zip"))
+	zw := zip.NewWriter(w)
+	defer zw.Close()
+	_ = filepath.WalkDir(convDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		rel, rerr := filepath.Rel(convDir, path)
+		if rerr != nil {
+			return nil
+		}
+		f, cerr := zw.Create(filepath.ToSlash(filepath.Join(base, rel)))
+		if cerr != nil {
+			return nil
+		}
+		src, oerr := os.Open(path)
+		if oerr != nil {
+			return nil
+		}
+		defer src.Close()
+		_, _ = io.Copy(f, src)
+		return nil
+	})
+}
+
 // handleArtifactPage renders the detail page for one artifact: a live preview
 // (iframe of /view) plus a metadata panel and highlighted source. All dynamic
 // data is fetched client-side from /api/artifact and /raw so the page reuses the
@@ -737,9 +842,10 @@ func (s *Server) handleArtifactPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	s.artifactTemplate.Execute(w, map[string]interface{}{
-		"Name":  art.Name,
-		"Title": art.Title,
-		"Type":  art.Type,
-		"Watch": s.watch,
+		"Name":     art.Name,
+		"Title":    art.Title,
+		"Type":     art.Type,
+		"Filename": art.Filename,
+		"Watch":    s.watch,
 	})
 }

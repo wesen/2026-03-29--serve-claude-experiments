@@ -37,17 +37,28 @@
   .warnings { font-size: 11px; color: #b91c1c; }
   .warnings li { margin-left: 16px; }
   .src { border: 2px solid #000; box-shadow: 2px 2px 0 #000; background: #fbfbfb; margin-top: 16px; }
-  .src h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 6px 10px; border-bottom: 2px solid #000; display: flex; justify-content: space-between; }
-  .src pre { margin: 0; padding: 10px; overflow-x: auto; font-family: 'SF Mono','Consolas',monospace; font-size: 12px; line-height: 1.45; max-height: 520px; overflow-y: auto; }
+  .src h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 6px 10px; border-bottom: 2px solid #000; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .srcbtns { display: flex; gap: 6px; }
+  .sbtn { font: inherit; font-size: 10px; text-transform: uppercase; letter-spacing: .03em; border: 1px solid #000; background: #fff; padding: 1px 7px; cursor: pointer; }
+  .sbtn:hover { background: #000; color: #fff; }
+  #source { max-height: 520px; overflow: auto; }
+  #source.muted { padding: 10px; }
+  #source pre { margin: 0; padding: 10px; font-family: 'SF Mono','Consolas',monospace; font-size: 12px; line-height: 1.45; }
   .muted { color: #888; }
+  /* theater mode: hide the sidebar, let the preview fill the width and grow taller */
+  .theater .panel { display: none; }
+  .theater .layout { grid-template-columns: 1fr; }
+  .theater .preview { height: 86vh; }
+  #theater.on { background: #000; color: #fff; }
 </style>
 </head>
-<body data-name="{{.Name}}" data-type="{{.Type}}">
+<body data-name="{{.Name}}" data-type="{{.Type}}" data-filename="{{.Filename}}">
   <div class="content">
     <div class="top">
       <a class="back" href="/">&#x25C0; Index</a>
       <h1>{{.Title}}</h1>
       <span class="badge {{.Type}}">{{.Type}}</span>
+      <button id="theater" class="back" title="Theater mode (t)" style="cursor:pointer">▣ Theater</button>
     </div>
 
     <div class="layout">
@@ -60,6 +71,7 @@
             <a id="open" href="#" target="_blank">open ▸</a>
             <a id="claude" href="#" target="_blank" style="display:none">claude.ai ▸</a>
             <a id="transcript" href="#" target="_blank" style="display:none">transcript ▸</a>
+            <a id="session" href="#" style="display:none" title="Download the whole conversation (transcript + JSON + all artifacts)">session ⬇</a>
           </div>
         </div>
         <div class="box">
@@ -83,8 +95,14 @@
     </div>
 
     <div class="src">
-      <h3><span>Source</span><span id="srcmeta" class="muted"></span></h3>
-      <pre id="source" class="muted">Loading…</pre>
+      <h3>
+        <span>Source <span id="srcmeta" class="muted"></span></span>
+        <span class="srcbtns">
+          <button id="copy" class="sbtn" title="Copy source to clipboard">copy</button>
+          <button id="download" class="sbtn" title="Download this source file">download</button>
+        </span>
+      </h3>
+      <div id="source" class="muted">Loading…</div>
     </div>
   </div>
 
@@ -95,7 +113,7 @@
   var el = function(id){ return document.getElementById(id); };
   var esc = function(s){ var d=document.createElement("div"); d.textContent = s==null?"":s; return d.innerHTML; };
 
-  el("frame").src = "/view/" + enc;
+  el("frame").src = "/view/" + enc + "?embed=1";
   el("open").href = "/view/" + enc;
 
   var collections = [];
@@ -161,6 +179,7 @@
       // links
       if (data.claude_url){ el("claude").href = data.claude_url; el("claude").style.display=""; }
       if (data.has_transcript){ el("transcript").href = "/transcript/" + enc; el("transcript").style.display=""; }
+      if (d.source_uuid){ el("session").href = "/session/" + enc; el("session").style.display=""; }
       // warnings
       var warns = data.warnings || [];
       if (warns.length){
@@ -171,10 +190,36 @@
     });
   }
 
-  // source (raw text, escaped — no external highlighter dependency)
-  fetch("/raw/" + enc).then(function(r){ return r.text(); }).then(function(txt){
-    var pre = el("source"); pre.classList.remove("muted"); pre.textContent = txt;
+  // source: raw text (for copy/download) + server-side syntax highlighting (chroma).
+  var rawText = "";
+  fetch("/raw/" + enc).then(function(r){ return r.text(); }).then(function(txt){ rawText = txt; });
+  fetch("/highlight/" + enc).then(function(r){ return r.text(); }).then(function(html){
+    var box = el("source"); box.classList.remove("muted"); box.innerHTML = html;
   }).catch(function(){ el("source").textContent = "(could not load source)"; });
+
+  function flash(btn, msg){ var old = btn.textContent; btn.textContent = msg; setTimeout(function(){ btn.textContent = old; }, 1100); }
+  el("copy").onclick = function(){
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(rawText).then(function(){ flash(el("copy"), "copied ✓"); }, function(){ flash(el("copy"), "failed"); });
+    }
+  };
+  el("download").onclick = function(){
+    var fn = document.body.dataset.filename || name.split("/").pop();
+    var blob = new Blob([rawText], {type: "text/plain"});
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = fn;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+  };
+
+  // theater mode: hide the sidebar for a larger preview. Toggle with the button,
+  // the 't' key, or exit with Escape.
+  function toggleTheater(){ document.body.classList.toggle("theater"); el("theater").classList.toggle("on", document.body.classList.contains("theater")); }
+  el("theater").onclick = toggleTheater;
+  document.addEventListener("keydown", function(e){
+    var tag = (e.target.tagName||"").toLowerCase();
+    if (tag==="input"||tag==="textarea"||tag==="select") return;
+    if (e.key==="t"){ toggleTheater(); }
+    else if (e.key==="Escape" && document.body.classList.contains("theater")){ toggleTheater(); }
+  });
 
   loadCollections();
   load();

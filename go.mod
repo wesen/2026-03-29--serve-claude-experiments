@@ -3,6 +3,7 @@ module github.com/go-go-golems/serve-artifacts
 go 1.26
 
 require (
+	github.com/alecthomas/chroma/v2 v2.16.0
 	github.com/chromedp/cdproto v0.0.0-20260321001828-e3e3800016bc
 	github.com/chromedp/chromedp v0.15.1
 	github.com/evanw/esbuild v0.27.4
@@ -20,7 +21,6 @@ require (
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Masterminds/sprig v2.22.0+incompatible // indirect
 	github.com/adrg/frontmatter v0.2.0 // indirect
-	github.com/alecthomas/chroma/v2 v2.16.0 // indirect
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
