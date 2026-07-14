@@ -24,10 +24,31 @@
   }
   select { font: inherit; padding: 5px 6px; border: 2px solid #000; background: #fff; }
   .count { font-size: 11px; color: #333; white-space: nowrap; }
+  .topbar { display: flex; align-items: baseline; gap: 10px; flex: none; margin-bottom: 2px; }
+  .topbar h1 { margin-bottom: 0; }
+  .topbar .count { margin-left: auto; }
+  .hamburger { display: none; font: inherit; font-size: 12px; padding: 5px 10px; border: 2px solid #000; background: #fff; box-shadow: 2px 2px 0 #000; cursor: pointer; white-space: nowrap; }
+  .drawer { display: none; }
   .layout { display: grid; grid-template-columns: 200px 1fr; gap: 18px; flex: 1; min-height: 0; }
   .facets { overflow-y: auto; padding-bottom: 20px; }
   main { overflow-y: auto; padding-bottom: 20px; }
-  @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
+  @media (max-width: 720px) {
+    .content { padding: 10px 12px 0; }
+    .subtitle { display: none; }
+    .hamburger { display: inline-block; }        /* the only always-visible control on mobile */
+    .topbar { position: sticky; top: 0; z-index: 120; background: #fff; padding: 4px 0; }
+    .layout { grid-template-columns: 1fr; }       /* facets get moved into the drawer, so results fill the width */
+    /* The drawer: an unfoldable overlay holding search + filters + facets, above
+       the results, so you can refine while scrolled down. */
+    .drawer.open { display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 110;
+                   overflow-y: auto; background: #fff; border-top: 2px solid #000; padding: 12px 14px 24px;
+                   box-shadow: 0 8px 24px rgba(0,0,0,0.25); -webkit-overflow-scrolling: touch; }
+    .drawer .toolbar { margin-bottom: 12px; }
+    .drawer .search-input { flex: 1 1 100%; min-width: 0; }  /* full-width, wraps the buttons below it */
+    .drawer .facets { border-right: none; padding-right: 0; overflow: visible; }
+    body.dark .topbar { background: #191919; }
+    body.dark .drawer.open { background: #191919; border-color: #777; }
+  }
   .facets { border-right: 1px dashed #999; padding-right: 14px; }
   .facet-group { margin-bottom: 14px; }
   .facet-group h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 2px solid #000; margin-bottom: 5px; padding-bottom: 2px; }
@@ -139,7 +160,11 @@
 </head>
 <body>
   <div class="content">
-      <h1>Artifacts</h1>
+      <div class="topbar">
+        <button id="hamburger" class="hamburger" title="Search & filters">☰ Filters</button>
+        <h1>Artifacts</h1>
+        <span id="count" class="count"></span>
+      </div>
       <div class="subtitle">Serving from <code>{{.Dir}}</code> — {{.Count}} artifacts</div>
 
       <div class="toolbar">
@@ -158,7 +183,6 @@
         </span>
         <button id="theme" class="vbtn" title="Toggle dark mode (d)">◐</button>
         <button id="palette-btn" class="vbtn" title="Command palette (⌘K)">⌘K</button>
-        <span id="count" class="count"></span>
       </div>
 
       <div id="advanced" class="advanced" style="display:none">
@@ -184,6 +208,9 @@
           <div id="empty" class="empty" style="display:none">No artifacts match.</div>
         </main>
       </div>
+      <!-- On mobile, the toolbar, #advanced, and .facets are moved in here to form
+           an unfoldable drawer; on desktop they are moved back to their places. -->
+      <div id="drawer" class="drawer"></div>
   </div>
 
   <div id="lightbox" class="lightbox" style="display:none">
@@ -672,6 +699,32 @@
   var scrollTimer;
   el("results").addEventListener("scroll", function(){ clearTimeout(scrollTimer); scrollTimer = setTimeout(writeURL, 150); }, { passive: true });
   el("grid").addEventListener("click", function(){ writeURL(); }, true);
+
+  // ---- mobile drawer: fold search + filters + facets behind a hamburger ----
+  // On mobile the toolbar, advanced panel, and facet sidebar are moved into a
+  // fixed overlay drawer (and moved back on desktop), so filters are reachable
+  // from a sticky top bar while scrolled deep into the results.
+  var mqMobile = window.matchMedia("(max-width: 720px)");
+  function applyLayout(){
+    var content = document.querySelector(".content"), layout = document.querySelector(".layout"),
+        drawer = el("drawer"), toolbar = document.querySelector(".toolbar"), advanced = el("advanced"),
+        facets = document.querySelector(".facets"), main = el("results");
+    if (mqMobile.matches){
+      if (toolbar.parentNode !== drawer){ drawer.appendChild(toolbar); drawer.appendChild(advanced); drawer.appendChild(facets); }
+    } else if (facets.parentNode === drawer){
+      content.insertBefore(toolbar, layout); content.insertBefore(advanced, layout); layout.insertBefore(facets, main);
+      closeDrawer();
+    }
+  }
+  function drawerOpen(){ return el("drawer").classList.contains("open"); }
+  function positionDrawer(){ el("drawer").style.top = Math.round(document.querySelector(".topbar").getBoundingClientRect().bottom) + "px"; }
+  function openDrawer(){ positionDrawer(); el("drawer").classList.add("open"); el("hamburger").textContent = "✕ Close"; }
+  function closeDrawer(){ el("drawer").classList.remove("open"); el("hamburger").textContent = "☰ Filters"; }
+  function toggleDrawer(){ drawerOpen() ? closeDrawer() : openDrawer(); }
+  el("hamburger").addEventListener("click", toggleDrawer);
+  mqMobile.addEventListener("change", applyLayout);
+  window.addEventListener("resize", function(){ if (drawerOpen()) positionDrawer(); });
+  applyLayout();
 
   loadCollections();
   var restore = hydrateFromURL();
