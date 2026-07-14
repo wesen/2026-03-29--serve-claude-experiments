@@ -7,37 +7,48 @@ import (
 )
 
 type SearchDocument struct {
-	Name         string   `json:"name"`
-	Title        string   `json:"title"`
-	Description  string   `json:"description"`
-	Tags         []string `json:"tags"`
-	OriginalDate string   `json:"original_date"`
-	Filename     string   `json:"filename"`
-	Type         string   `json:"type"`
-	ViewURL      string   `json:"view_url"`
-	SearchText   string   `json:"search_text"`
+	Name          string   `json:"name"`
+	Title         string   `json:"title"`
+	Description   string   `json:"description"`
+	Tags          []string `json:"tags"`
+	OriginalDate  string   `json:"original_date"`
+	Filename      string   `json:"filename"`
+	Type          string   `json:"type"`
+	ViewURL       string   `json:"view_url"`
+	SearchText    string   `json:"search_text"`
+	Project       string   `json:"project,omitempty"`
+	Model         string   `json:"model,omitempty"`
+	SourceUUID    string   `json:"source_uuid,omitempty"`
+	UpdatedAt     string   `json:"updated_at,omitempty"`
+	WarningsCount int      `json:"warnings_count"`
 }
 
 func buildSearchDocuments(arts []artifacts.Artifact) []SearchDocument {
 	docs := make([]SearchDocument, 0, len(arts))
 	for _, a := range arts {
 		docs = append(docs, SearchDocument{
-			Name:         a.Name,
-			Title:        a.Title,
-			Description:  a.Description,
-			Tags:         append([]string(nil), a.Tags...),
-			OriginalDate: a.OriginalDate,
-			Filename:     a.Filename,
-			Type:         a.Type,
-			ViewURL:      "/view/" + a.Name,
-			SearchText:   buildSearchText(a),
+			Name:          a.Name,
+			Title:         a.Title,
+			Description:   a.Description,
+			Tags:          append([]string(nil), a.Tags...),
+			OriginalDate:  a.OriginalDate,
+			Filename:      a.Filename,
+			Type:          a.Type,
+			ViewURL:       "/view/" + a.Name,
+			SearchText:    buildSearchText(a),
+			Project:       a.Project,
+			Model:         a.Model,
+			SourceUUID:    a.SourceConversationUUID,
+			UpdatedAt:     a.ConversationUpdatedAt,
+			WarningsCount: len(a.Warnings),
 		})
 	}
 	return docs
 }
 
 func buildSearchText(a artifacts.Artifact) string {
-	parts := []string{a.Name, a.Title, a.Description, a.Filename, a.Type, a.OriginalDate}
+	parts := []string{a.Name, a.Title, a.Description, a.Filename, a.Type, a.OriginalDate,
+		a.SourceConversationTitle, a.Project, a.Model}
 	parts = append(parts, a.Tags...)
 	return strings.ToLower(strings.Join(parts, " "))
 }

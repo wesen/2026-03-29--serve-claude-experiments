@@ -26,6 +26,19 @@ type Artifact struct {
 	ManifestPath  string         // absolute path to manifest, if present
 	HasManifest   bool           // whether a companion manifest file was found
 	ManifestError string         // validation or parse error for the manifest, if any
+
+	// Provenance, ingested from a conversation export's meta.json when the
+	// artifact lives at "<conversation-uuid>/artifacts/<file>". Empty otherwise.
+	FromExport              bool     // true when a sibling export meta.json was found
+	SourceConversationUUID  string   // meta.json uuid
+	SourceConversationTitle string   // meta.json name (the conversation title)
+	Project                 string   // meta.json project_uuid (empty when unfiled)
+	Model                   string   // meta.json model
+	ConversationCreatedAt   string   // meta.json created_at (RFC3339)
+	ConversationUpdatedAt   string   // meta.json updated_at (RFC3339)
+	TranscriptPath          string   // abs path to <uuid>/conversation.md, if present
+	ClaudeURL               string   // https://claude.ai/chat/<uuid>
+	Warnings                []string // conversation reconstruction warnings
 }
 
 // Scanner reads a directory for artifact files.
@@ -105,6 +118,8 @@ func (s *Scanner) Scan() ([]Artifact, error) {
 		return nil, fmt.Errorf("scanning artifact directory: %w", err)
 	}
 
+	metaCache := make(map[string]*exportMeta) // conversation dir -> parsed meta.json (nil = none)
+
 	var artifacts []Artifact
 	for _, fe := range files {
 		title := extractTitle(fe.abs, fe.typ)
@@ -120,6 +135,14 @@ func (s *Scanner) Scan() ([]Artifact, error) {
 			ModifiedAt: fe.info.ModTime(),
 			Path:       fe.abs,
 		}
+
+		// Provenance: an artifact at "<uuid>/artifacts/<file>" is described by
+		// "<uuid>/meta.json". Enrich BEFORE the manifest overlay so a manifest
+		// title still wins (precedence: manifest > conversation name > derived).
+		if meta := lookupExportMeta(fe.abs, metaCache); meta != nil {
+			enrichFromExportMeta(&artifact, meta, filepath.Dir(filepath.Dir(fe.abs)))
+		}
+
 		if manifestPath, ok := manifests[fe.rel]; ok {
 			artifact.HasManifest = true
 			artifact.ManifestPath = manifestPath
@@ -133,6 +156,59 @@ func (s *Scanner) Scan() ([]Artifact, error) {
 		artifacts = append(artifacts, artifact)
 	}
 	return artifacts, nil
+}
+
+// lookupExportMeta returns the conversation export meta.json for an artifact at
+// "<conversation>/artifacts/<file>", or nil when the artifact is not laid out
+// that way or has no meta.json. Results (including misses) are cached per
+// conversation directory so each meta.json is read at most once per scan.
+func lookupExportMeta(absFilePath string, cache map[string]*exportMeta) *exportMeta {
+	artifactsDir := filepath.Dir(absFilePath)
+	if filepath.Base(artifactsDir) != "artifacts" {
+		return nil
+	}
+	convDir := filepath.Dir(artifactsDir)
+	if cached, seen := cache[convDir]; seen {
+		return cached
+	}
+	var meta *exportMeta
+	if m, err := loadExportMeta(filepath.Join(convDir, "meta.json")); err == nil {
+		meta = m
+	}
+	cache[convDir] = meta
+	return meta
+}
+
+// enrichFromExportMeta copies conversation provenance onto the artifact. It sets
+// the title from the conversation name only when no better (manifest) title has
+// been applied yet — the manifest overlay runs afterwards and still wins.
+func enrichFromExportMeta(a *Artifact, meta *exportMeta, convDir string) {
+	a.FromExport = true
+	a.SourceConversationUUID = meta.UUID
+	a.SourceConversationTitle = meta.Name
+	a.Project = meta.ProjectUUID
+	a.Model = meta.Model
+	a.ConversationCreatedAt = meta.CreatedAt
+	a.ConversationUpdatedAt = meta.UpdatedAt
+	a.Warnings = append([]string(nil), meta.Warnings...)
+	if meta.UUID != "" {
+		a.ClaudeURL = "https://claude.ai/chat/" + meta.UUID
+	}
+	if transcript := filepath.Join(convDir, "conversation.md"); fileExists(transcript) {
+		a.TranscriptPath = transcript
+	}
+	if a.OriginalDate == "" {
+		a.OriginalDate = dateOnly(meta.CreatedAt)
+	}
+	// Conversation name is a better default than a component/HTML-derived title.
+	if strings.TrimSpace(meta.Name) != "" {
+		a.Title = meta.Name
+	}
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // shouldSkipDir skips noise directories during the recursive walk.
