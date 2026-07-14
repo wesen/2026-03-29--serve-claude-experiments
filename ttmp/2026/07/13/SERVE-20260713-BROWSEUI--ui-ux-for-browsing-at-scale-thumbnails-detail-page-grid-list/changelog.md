@@ -53,3 +53,12 @@ Steps 17-19: capture shortcut → Ctrl/Cmd+Shift+C (9a5f14e); project UUID→nam
 
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/index.go — Project name resolution (Step 18)
 
+
+## 2026-07-14
+
+Step 20: mobile hamburger drawer — search/filters/facets fold into a sticky unfoldable menu on ≤720px, refinable while scrolled; desktop unchanged (commit 7efa012)
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/templates/index.html — Mobile drawer re-parenting (Step 20)
+

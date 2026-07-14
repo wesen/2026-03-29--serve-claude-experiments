@@ -899,3 +899,51 @@ Three related browsing improvements: a full-screen gallery lightbox opened by a 
 
 ### Technical details
 - New URL param: `gallery=<artifact name>` (the lightbox target). Scroll now tracked on `#results`.
+
+## Step 20: Mobile hamburger drawer for search + filters + facets
+
+On a narrow screen the search bar and facet sidebar consumed the top of the page, forcing a scroll back up to refine. This step folds the toolbar, advanced panel, and facet sidebar into an unfoldable drawer behind a sticky "☰ Filters" top bar, so filters are reachable while scrolled deep into the results. Desktop is untouched.
+
+### Prompt Context
+
+**User prompt (verbatim):** "n the mobile view, make the search and filters and facets a hamburger menu that's always on top that I can unfold to refine search even while scrolled down, to avoid having to scroll back up"
+
+**Assistant interpretation:** On mobile, collapse search + filters + facets into a sticky hamburger menu that unfolds over the results, usable without scrolling to the top.
+
+**Inferred user intent:** Refine a search from anywhere in a long result list on a phone.
+
+**Commit (code):** 7efa012 — "feat: mobile hamburger drawer for search + filters + facets"
+
+### What I did
+- `index.html`: wrapped the title in a `.topbar` (with the `☰ Filters` hamburger and the moved-in result `#count`); removed `#count` from the toolbar; added an empty `#drawer` container.
+- CSS: a `@media (max-width:720px)` block — hamburger shown, subtitle hidden, `.topbar` sticky; `#drawer.open` a fixed, scrollable overlay (below the sticky top bar) holding the controls; full-width drawer search.
+- JS: `applyLayout()` uses a `matchMedia("(max-width:720px)")` listener to **move** `.toolbar`, `#advanced`, and `.facets` into `#drawer` on mobile and back to their original places on desktop; `toggleDrawer`/`positionDrawer` (top offset measured from the sticky bar's bottom); resize reposition.
+
+### Why
+- The desktop layout (top search bar + left facet column) had to stay, and those controls live in different DOM parents, so a matchMedia re-parent groups them into one mobile drawer without disturbing desktop — cleaner than duplicating markup or forcing a shared wrapper that would break the desktop grid.
+- Moving elements (not cloning) keeps a single set of inputs, so all existing id-based wiring (search, facets, collections) keeps working unchanged.
+
+### What worked
+- Verified at 390×800: collapsed view is a sticky `☰ Filters` bar + count with results full-width; scrolling to 1600 then tapping the hamburger unfolds the drawer (search + sort + facets + collections) over the results, label toggles to `✕ Close`. Resizing back to 1400px restores toolbar→`.content`, facets→`.layout`, hamburger hidden, drawer empty. 0 console errors.
+
+### What didn't work
+- First pass, the drawer search rendered as a cramped "Se" because base `.search-input { flex:1 }` (flex-basis 0) beat `width:100%`. Fixed with `.drawer .search-input { flex: 1 1 100% }` so it takes a full row and the buttons wrap below.
+
+### What was tricky to build
+- **Grouping controls from two DOM parents.** The toolbar/advanced are `.content` children; the facets are a `.layout` grid child. A pure-CSS drawer can't relocate the facets out of the grid without `display:contents` tricks that also break the desktop grid. The reliable approach was a matchMedia-driven re-parent with an idempotent guard (`if (toolbar.parentNode !== drawer)` / `if (facets.parentNode === drawer)`) so repeated `change`/`resize` events don't thrash, and precise restore anchors (`insertBefore(..., layout)` and `insertBefore(facets, main)`).
+- **Drawer top offset.** The sticky top bar's height isn't fixed (wraps), so the drawer's `top` is measured from `topbar.getBoundingClientRect().bottom` on open and on resize rather than hard-coded.
+
+### What warrants a second pair of eyes
+- The re-parent idempotency guards and restore anchors — confirm rapid resize across the 720px boundary always lands elements in the right place.
+- Interaction with Step 19's `#results` scroll tracking: the drawer is an overlay, so the results keep their scroll behind it; confirm opening/closing the drawer doesn't perturb `y` in the URL.
+
+### What should be done in the future
+- Optional: close the drawer automatically after a facet selection (currently it stays open for multi-refine, by design).
+- A backdrop tap-to-close (currently the `✕ Close`/hamburger toggles).
+
+### Code review instructions
+- `index.html`: the `.topbar`/`.hamburger`/`.drawer` CSS and the `@media (max-width:720px)` block; `applyLayout`/`toggleDrawer`/`positionDrawer` and the `matchMedia` wiring.
+- Validate: shrink the viewport ≤720px → `☰ Filters` bar; scroll, tap it, refine; widen → desktop layout restored.
+
+### Technical details
+- `matchMedia("(max-width: 720px)")`; drawer children order = toolbar, advanced, facets; `#count` moved to `.topbar` so it stays visible while scrolled.
