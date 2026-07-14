@@ -34,3 +34,13 @@ Step 14: advanced search — query syntax (tag:/model:/type:/is:/has:/after:/bef
 
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/query.go — Query-syntax parser + date bounds
 
+
+## 2026-07-14
+
+Steps 15-16: recapture thumbnail from live view + server re-render (a79f027); URL scroll/state restore so Back returns to the exact place (06f8556)
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/templates/artifact.html — Thumbnail recapture UI (Step 15)
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/templates/index.html — URL scroll/state restore (Step 16)
+

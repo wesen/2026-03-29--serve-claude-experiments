@@ -689,3 +689,98 @@ The search box gained a mini query language (`tag:`, `model:`, `type:`, `project
 
 ### Technical details
 - Recognized keys: `tag/tags`, `type`, `model`, `project/proj`, `library/lib`, `after/since`, `before/until`, `is:(favorite|favorited|fav|starred)`, `has:(warnings|warning|warn)`.
+
+## Step 15: Recapture the thumbnail from the live view (or re-render server-side)
+
+The auto thumbnail is a screenshot of the artifact's *initial* state, which is often mediocre (blank, still loading, or a boring first frame). This step lets a viewer replace it: a Thumbnail box on the detail page with a live preview and two actions — capture the current iframe (the state you interacted it into) client-side, or ask the server for a fresh headless-Chrome re-render.
+
+### Prompt Context
+
+**User prompt (verbatim):** "- add the functionality to update the screenshot when interacting with the artifact, in case the base screenshot is mediocre (maybe with some keypress or so, or a button next to it). \n- keep track of how far one has scrolled in the url so that going back puts you back at where you scrolled."
+
+**Assistant interpretation:** Provide a way (button/keypress) to update an artifact's thumbnail to a better frame, ideally the current interacted view (this step); and preserve gallery scroll across Back (Step 16).
+
+**Inferred user intent:** Curate good-looking thumbnails, and not lose your place when browsing a large library.
+
+**Commit (code):** a79f027 — "feat: recapture artifact thumbnail from the live view (or re-render server-side)"
+
+### What I did
+- `pkg/server/thumbnail.go`: `saveUploaded(hash, data)` (validate PNG → downscale → write to the cache path, mark renderOK) and `invalidate(hash)` (delete cached file + clear renderOK).
+- `pkg/server/server.go`: `thumbHash(name)` (index-or-file hash), `handleThumbSave` (`POST /thumb/{name}`, 25 MB cap, stores the uploaded PNG) and `handleThumbRerender` (`POST /api/thumb/rerender/{name}`, invalidate then `get` to render fresh).
+- `pkg/server/templates/artifact.html`: html2canvas from CDN; a Thumbnail box (preview `<img>` + `📸 capture view` + `↻ re-render` + status line); `setThumbFromView` (html2canvas of the iframe's `body` at current scroll → `toBlob` → POST), `rerenderThumb`, `refreshThumbPreview` (cache-buster); `c` key bound to capture.
+
+### Why
+- Client capture matches "when interacting" — it rasterizes exactly what's on screen. Server re-render is the reliable fallback (real Chrome captures WebGL; client html2canvas cannot).
+- Writing a saved thumbnail to the normal cache path means the backfill (which only renders *missing* thumbnails) never overwrites it.
+
+### What worked
+- API: `POST /thumb` with a 600×400 PNG → served back downscaled to 480×320 with the exact uploaded color; non-PNG → 400; `POST /api/thumb/rerender` → `{ok:true}`. UI: capturing the s3paper studio iframe produced a faithful thumbnail of the "Hello, ink." device view; preview refreshed; message "thumbnail updated ✓ (from this view)". 0 console errors.
+
+### What didn't work
+- N/A in the end. (I deliberately set html2canvas `allowTaint:false, useCORS:true` — see tricky, below.)
+
+### What was tricky to build
+- **Canvas tainting.** If html2canvas draws a cross-origin image without CORS, the canvas becomes tainted and `toBlob` throws `SecurityError`. Setting `allowTaint:false` (with `useCORS:true`) makes html2canvas *skip* uncooperative images instead of tainting, so `toBlob` always succeeds; the trade-off is those images render blank. For same-origin artifact DOM/2D-canvas this captures well.
+- **Stale ETag after save.** The thumbnail ETag is the content hash, which a recapture doesn't change, so a plain refetch would 304 to the old image. The preview (and any refresh) appends `?v=Date.now()` to force the browser to refetch the new bytes. Gallery cards elsewhere still need their own cache to expire — an accepted limitation.
+
+### What warrants a second pair of eyes
+- `POST /thumb/{name}` writes a client-supplied image to disk keyed by the artifact hash. It validates the PNG and caps the body at 25 MB, but reviewers should confirm the path can't escape the thumbs dir (it's `filepath.Join(thumbsDir, hash+"-ver.png")` with a hex hash, so no traversal).
+- WebGL artifacts: client capture yields a blank/partial image; the re-render fallback is the intended path — confirm the UX makes that discoverable (the capture failure message points to "try re-render").
+
+### What should be done in the future
+- Surface a recapture affordance directly in the gallery (currently detail-page only).
+- A per-artifact thumbnail version so gallery cards refresh after a recapture without a hard reload.
+
+### Code review instructions
+- `pkg/server/thumbnail.go`: `saveUploaded`, `invalidate`.
+- `pkg/server/server.go`: `thumbHash`, `handleThumbSave`, `handleThumbRerender`, routes.
+- `pkg/server/templates/artifact.html`: the Thumbnail box + `setThumbFromView`/`rerenderThumb`.
+- Validate: `POST /thumb/<name>` a PNG then `GET /thumb/<name>?v=1`; `POST /api/thumb/rerender/<name>`; in the UI press `c` on a DOM artifact.
+
+### Technical details
+- `POST /thumb/{name}` body is raw `image/png`; server downscales to 480px wide.
+
+## Step 16: Remember scroll position + loaded count in the URL (Back restores the view)
+
+The gallery is a single-page app, so clicking into an artifact and pressing Back re-initialized it — page 1, scroll 0 — losing both your scroll position and any extra pages you had loaded. This step serializes the full search state plus the loaded count and scroll offset into the URL, and restores them on load.
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 15)
+
+**Assistant interpretation:** Persist scroll (and enough state to rebuild the view) in the URL so browser Back returns to the exact place.
+
+**Inferred user intent:** Don't lose your place when bouncing between the gallery and artifacts.
+
+**Commit (code):** 06f8556 — "feat: remember scroll position + loaded count in the URL so Back restores the view"
+
+### What I did
+- `pkg/server/templates/index.html`: `writeURL()` serializes state + `n` (loaded count) + `y` (scrollY) via `history.replaceState`; `hydrateFromURL()` reads them back; `reflectControls()` syncs the search box / sort / date inputs / view buttons; `initialLoad(restore)` fetches `n` items in one request (capped 600) and `scrollTo(y)`. `qs(limit, offset)` gained overrides. `history.scrollRestoration="manual"`. A throttled `scroll` listener and a capturing `#grid` click flush the URL before navigation. `fetchPage` calls `writeURL()`.
+
+### Why
+- Restoring the loaded count in a single `limit=n` fetch rebuilds the whole scrolled-through list at once, so `scrollTo(y)` lands correctly (row/thumb heights are fixed, so layout height is stable before images load).
+- `scrollRestoration="manual"` stops the browser's own restoration from fighting ours.
+
+### What worked
+- Verified: loaded 180 cards + scrolled to 2400 → URL `?n=180&y=2400`; navigated to an artifact; Back → 180 cards re-loaded and `scrollY===2400`, "Load more" still shown. 0 console errors.
+
+### What didn't work
+- N/A.
+
+### What was tricky to build
+- **Flushing the URL before a link navigation.** The scroll listener is throttled (150 ms), so a click right after scrolling could navigate with a stale `y`. A capturing-phase click listener on `#grid` calls `writeURL()` synchronously before the `<a>`'s default navigation, so the history entry the browser records already has the current scroll/state.
+- **Paging offset after a restore.** After the one-shot `limit=n` fetch, `state.offset` is set to `results.length - PAGE` so the existing "Load more" (which does `offset += PAGE`) continues correctly from where the restore left off, and `renderCards` shows the button iff `results.length < total`.
+
+### What warrants a second pair of eyes
+- The `initialLoad` restore math (`state.offset = max(0, results.length - PAGE)`) and the 600-item cap; confirm "Load more" behaves right immediately after a restore.
+- `writeURL` runs on every `fetchPage` and (throttled) on scroll; confirm no excessive `replaceState` churn.
+
+### What should be done in the future
+- Consider syncing state to the URL on facet/tag clicks too (currently via the `fetchPage` → `writeURL` path, which already covers it) and de-duping rapid `replaceState` calls if churn is ever observed.
+
+### Code review instructions
+- `pkg/server/templates/index.html`: `writeURL`, `hydrateFromURL`, `reflectControls`, `initialLoad`, the scroll/`#grid` listeners, and the init block.
+- Validate: load more a few times, scroll, open an artifact, press Back — the count and scroll position return.
+
+### Technical details
+- URL params: search state (`q/sort/type/project/model/library/after/before/warnings/favorite/collection/tag*`), plus `view`, `n` (loaded count, omitted when ≤ PAGE), `y` (scroll, omitted when 0).
