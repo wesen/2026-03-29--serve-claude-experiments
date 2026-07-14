@@ -14,3 +14,14 @@ Implemented the visual-browsing layer end to end: content hash (2a68d2c), thumbn
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/templates/artifact.html — Artifact detail page
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/thumbnail.go — Thumbnail service (engine, cache, pool, singleflight)
 
+
+## 2026-07-14
+
+Follow-on enhancements (Steps 8-13): self-contained Docker image with bundled Chrome (7211a03); detail-page embed view + highlighted/copyable/downloadable source + theater mode + session zip (f09d72b); Tailwind in the JSX host page + thumbnail render-env versioning (8ddd2e5); transcript rendered as HTML via goldmark (7236139); collections UX fixes + footer restyle + 404 sentinel (9a9c080); tag single-render dedup (638736c).
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/Dockerfile — Self-contained image (Step 8)
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/templates/artifact.html — Detail-page enhancements (Step 9)
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/templates/transcript.html — Rendered transcript (Step 11)
+

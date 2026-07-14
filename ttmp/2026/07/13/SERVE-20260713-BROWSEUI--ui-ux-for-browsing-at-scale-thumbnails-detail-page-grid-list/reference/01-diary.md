@@ -11,19 +11,24 @@ DocType: reference
 Intent: long-term
 Owners: []
 RelatedFiles:
-    - pkg/server/index.go
-    - pkg/server/search.go
-    - pkg/server/thumbnail.go
-    - pkg/server/server.go
-    - pkg/server/templates/index.html
-    - pkg/server/templates/artifact.html
-    - cmd/serve-artifacts/cmds/serve.go
+    - Path: cmd/serve-artifacts/cmds/serve.go
+    - Path: pkg/server/index.go
+    - Path: pkg/server/search.go
+    - Path: pkg/server/server.go
+    - Path: pkg/server/templates/artifact.html
+    - Path: pkg/server/templates/index.html
+    - Path: pkg/server/thumbnail.go
+    - Path: repo://pkg/server/templates/jsx-host.html
+      Note: Tailwind + embed-nav gating (Steps 9,10)
+    - Path: repo://pkg/userdata/store.go
+      Note: ErrCollectionNotFound sentinel (Step 12)
 ExternalSources: []
-Summary: "Implementation diary for the visual-browsing layer of serve-artifacts: content hash, thumbnail service (chromedp render, content-hash cache, bounded pool + singleflight), lazy gallery, background backfill + renderOK, artifact detail page, grid/list toggle, and follow-on polish."
-LastUpdated: 2026-07-14
-WhatFor: "Record the step-by-step implementation of the BROWSEUI ticket (thumbnails, detail page, grid/list)."
-WhenToUse: "Read before resuming or reviewing the BROWSEUI implementation."
+Summary: 'Implementation diary for the visual-browsing layer of serve-artifacts: content hash, thumbnail service (chromedp render, content-hash cache, bounded pool + singleflight), lazy gallery, background backfill + renderOK, artifact detail page, grid/list toggle, and follow-on polish.'
+LastUpdated: 2026-07-14T00:00:00Z
+WhatFor: Record the step-by-step implementation of the BROWSEUI ticket (thumbnails, detail page, grid/list).
+WhenToUse: Read before resuming or reviewing the BROWSEUI implementation.
 ---
+
 
 # Diary
 
@@ -327,3 +332,307 @@ The three lighter polish features. Dark mode is a theme toggle persisted in `loc
 
 ### Technical details
 - Theme persisted under `localStorage["theme"] = "dark"|"light"`; view under `localStorage["view"]`.
+
+---
+
+*The steps below were written retroactively after several rounds of follow-on work that extended the browsing experience past the original seven-step ticket (Docker packaging, detail-page enhancements, a Tailwind fidelity fix, transcript rendering, and organization/UX fixes). They are recorded here to keep one continuous diary for the serve-artifacts browsing surface; Steps 12–13 also touch the USERDATA feature (collections/tags).*
+
+## Step 8: Self-contained Docker image with bundled headless Chrome
+
+The thumbnail subsystem depends on a real browser at render time, so "install and run" would otherwise require the host to have Chrome. This step packages the server and its Chromium into one image so a host needs only Docker. The preceding discussion clarified *why* Chrome is a runtime (not import-time) dependency: a thumbnail is a screenshot of the artifact running via the server's own `/view`, so generation needs the serve pipeline plus a browser; serving an already-cached thumbnail needs neither. Putting Chrome in the image makes the "Chrome-free serving tier" question moot.
+
+### Prompt Context
+
+**User prompt (verbatim):** "why  chromium at runtime? wouldn't it only be needed on import?" — then: "ok, can we package it all as a self contained docker though, with all the dependencies setup?"
+
+**Assistant interpretation:** Explain the runtime-vs-import Chrome dependency, then ship a Dockerfile that bundles everything (server + Chromium + fonts + certs) so nothing is installed on the host.
+
+**Inferred user intent:** A one-command, reproducible deployment where thumbnails "just work" without host setup.
+
+**Commit (code):** 7211a03 — "feat: self-contained Docker image with bundled headless Chrome"
+
+### What I did
+- Rewrote `Dockerfile` (the existing one targeted distroless, which has no Chrome): multi-stage, build on `golang:1.26-bookworm` with `CGO_ENABLED=1` (SQLite driver), keep the JSX precompile (`go generate ./pkg/server`), runtime on `debian:bookworm-slim` with `chromium`, `ca-certificates`, `fonts-liberation`, `fonts-noto-core`, `fonts-noto-color-emoji`, and `tini`.
+- Added `docker-compose.yml`, `.dockerignore`, and `DOCKER.md`.
+- Made Chrome container-safe in `pkg/server/thumbnail.go`: always pass `--disable-dev-shm-usage`; add a `noSandbox` field + `--no-sandbox` behind a `--chrome-no-sandbox` flag / `SERVE_ARTIFACTS_CHROME_NO_SANDBOX` env (`serve.go`, `server.go` `Config.ChromeNoSandbox`); the image sets the env.
+- `/data` volume for the thumbnail cache and the SQLite DB; default `serve` command points there.
+
+### Why
+- Bookworm on both stages so the runtime glibc matches the cgo build's.
+- `--disable-dev-shm-usage`: the default 64 MB `/dev/shm` in a container crashes Chrome on larger pages; setting it removes any `--shm-size` tuning.
+- `--no-sandbox`: Chrome cannot sandbox as root inside a container; gated so it stays off on a normal host.
+
+### What worked
+- Verified end to end: the running container rendered a real 480×302 JSX thumbnail via its bundled Chromium 150, wrote thumbs + `userdata.db` to `/data`, and reported `render_ok=true`. Final image ~841 MB.
+
+### What didn't work
+- First `docker build` failed: `go: go.mod requires go >= 1.26 (running go 1.25.12; GOTOOLCHAIN=local)`. Cause: adding `chromedp` earlier raised the module's minimum Go to 1.26, but the Dockerfile used `golang:1.25-bookworm`. Fixed by bumping the build image to `golang:1.26-bookworm`.
+- The failure was initially masked because I piped `docker build ... | tail -40`, so the shell reported the `tail` exit code (0), not the build's. Switched to redirecting to a log file and checking `EXIT=$?`.
+
+### What I learned
+- chromedp v0.15.1 pulls the module's Go directive to 1.26; any consumer (including the Docker build image) must match. This is a real minimum-version bump, not cosmetic.
+- Piping a long-running command into `tail` hides its exit status; capture status separately.
+
+### What was tricky to build
+- Getting headless Chrome to run at all inside the container: two separate flags are needed (`--no-sandbox` for the root-sandbox restriction, `--disable-dev-shm-usage` for the tiny `/dev/shm`), and missing either yields a crash that looks like a render failure. Diagnosed by running the container and curling `/thumb` until it returned a real PNG rather than the placeholder.
+
+### What warrants a second pair of eyes
+- The glibc/cgo pairing (bookworm build ↔ bookworm-slim runtime); switching either base image risks a runtime linker error.
+- Running Chrome as root with `--no-sandbox` inside the container is acceptable for a local viewer but is the usual security caveat; a hardened deployment would run non-root.
+
+### What should be done in the future
+- Optional vendoring of React/Babel/Tailwind + a localized import map for a fully offline image (JSX thumbnails currently need outbound HTTPS at render time).
+
+### Code review instructions
+- Start at `Dockerfile` (stages, apt packages, ENV) and `DOCKER.md`.
+- `pkg/server/thumbnail.go`: `chromedpEngine.start` (the two container flags + conditional `NoSandbox`), `newChromedpEngine(noSandbox)`.
+- Validate: `docker build -t serve-artifacts . && docker run -p 8080:8080 -v <artifacts>:/artifacts:ro -v <vol>:/data serve-artifacts`, then `curl -o t.png localhost:8080/thumb/<name>`.
+
+### Technical details
+- Default container command: `serve --dir /artifacts --port 8080 --thumbs /data/thumbs --db /data/userdata.db`.
+
+## Step 9: Detail-page enhancements — embed view, highlighted/copyable/downloadable source, theater mode, session download
+
+Four independent improvements to the artifact detail page, plus an up-front investigation the user asked for. The investigation confirmed the whole conversation is stored locally per directory (`conversation.json` = full raw API payload, `conversation.md` = rendered transcript, `meta.json`, `artifacts/`), so "download the entire session" needs no re-fetching. The four changes make the embedded preview clean, the source panel useful, the preview larger on demand, and the whole session downloadable.
+
+### Prompt Context
+
+**User prompt (verbatim):** "- remove the < Index from the "embedded view" on http://localhost:8099/artifact/517687de-6ed6-4c5b-8a97-483093cc4389/artifacts/attune-studio \n- add syntax highlighting + copy to clipboard + download button for the Source.\n- Add a "theater" mode that hides the action / metadata / tags sidebar for a bigger view (grow a bit vertically too to preserve ratio)\n- Allow downloading the entire session (conversation) as well (I'm not sure if that is already imported).\n\nBefore you start, tell me if we are importing and storing the entire conversation."
+
+**Assistant interpretation:** Answer whether the full conversation is stored, then implement: (1) suppress the in-frame nav bar, (2) syntax-highlight the source with copy + download, (3) a theater toggle that hides the sidebar and enlarges the preview, (4) a whole-session download.
+
+**Inferred user intent:** A polished, self-sufficient detail page for inspecting one artifact and exporting its full context.
+
+**Commit (code):** f09d72b — "feat: detail-page — embed view (no nav), highlighted+copyable+downloadable source, theater mode, session download"
+
+### What I did
+- **Embed view**: `handleView` reads `?embed=1` and suppresses the floating back-to-index nav (HTML: skip the injected bar; JSX: `{{if not .Embed}}` in `jsx-host.html`). The detail-page iframe loads `/view/<name>?embed=1`; the standalone "open ▸" link omits it.
+- **Source**: `GET /highlight/{name}` renders the source with chroma (inline styles via `WithClasses(false)`, self-contained). The page fetches `/highlight` for display and `/raw` for the raw text used by **Copy** (`navigator.clipboard`) and **Download** (a `Blob` saved as the real filename, passed via `data-filename`).
+- **Theater mode**: a `▣ Theater` button (also `t` to toggle, `Esc` to exit) toggles `body.theater`, which hides `.panel`, makes `.layout` single-column, and grows `.preview` to `86vh`.
+- **Session download**: `GET /session/{name}` streams the conversation directory as `<uuid>.zip` (`archive/zip`); the page shows `session ⬇` when `source_uuid` is present. Resolved the conversation dir from `art.TranscriptPath` (or `filepath.Dir(filepath.Dir(art.Path))` for export artifacts).
+
+### Why
+- A dedicated `/highlight` endpoint keeps the page self-contained (no CDN highlighter) and reuses chroma, already in the module graph.
+- Keying copy/download off `/raw` keeps the raw bytes exact while the display is highlighted HTML.
+
+### What worked
+- Playwright confirmed all four: clean embedded preview (no nav), highlighted source with Copy/Download, theater hiding the sidebar and enlarging the preview, and a 52 KB `session.zip` containing both artifacts + `conversation.json` + `conversation.md` + `meta.json`. 0 console errors (only the favicon 404).
+
+### What didn't work
+- My session-zip smoke test reported `size=0` because the test script referenced `$SCRATCH` in the `curl -o` path *before* defining it, so the file was written to an unwritable path. A scripting bug, not a server bug — re-ran with `SCRATCH` defined first and got the 52 KB zip.
+
+### What I learned
+- Passing the artifact name to page JS via a `data-name`/`data-filename` body attribute is safe under `html/template` (attribute-context escaping) and avoids embedding it in a script string.
+
+### What was tricky to build
+- The session-dir resolution has two cases: normal exports have `TranscriptPath` set (so the dir is its parent), but an artifact could be `FromExport` without a transcript, in which case the dir is two levels up from `art.Path` (`<dir>/artifacts/<file>`). Handling only the first case would 404 valid sessions; I covered both and return 404 only for non-export artifacts.
+
+### What warrants a second pair of eyes
+- `handleSession` walks and zips a directory streamed straight to the client; confirm it can never escape the conversation dir (it only ever zips under a resolved `convDir` and uses `filepath.Rel`).
+- `handleArtifactJSON`/detail handlers look up the base artifact via `scanner.FindByName` (a per-request `Scan()`), not the in-memory index — fine for a single page view, but noted.
+
+### What should be done in the future
+- Optional line numbers / a language label on the highlighted source; theming the detail page for dark mode (index-only today).
+
+### Code review instructions
+- `pkg/server/server.go`: `handleView` (embed), `handleHighlight`, `handleSession`.
+- `pkg/server/templates/artifact.html`: the source fetch/copy/download block and the theater toggle; `jsx-host.html` `{{if not .Embed}}`.
+- Validate: open `/artifact/<name>`, toggle theater, click Copy/Download; `curl -o s.zip localhost:PORT/session/<name> && unzip -l s.zip`.
+
+### Technical details
+- `/session` sets `Content-Disposition: attachment; filename="<uuid>.zip"`; `/highlight` returns a chroma `<pre>` with inline styles (github style).
+
+## Step 10: Load Tailwind in the JSX host page (and version the thumbnail render environment)
+
+A specific artifact rendered with a collapsed layout compared to claude.ai. The cause was Tailwind: many Claude JSX artifacts style themselves entirely with Tailwind utility classes, which the claude.ai runtime provides but our `/view` host page never loaded, so the classes were inert. Adding the Tailwind Play CDN to the host page restores fidelity. This also exposed a caching subtlety: changing the render environment does not change artifact content hashes, so cached thumbnails (and their content-hash ETags) would stay stale — fixed with a render-environment version folded into both the cache path and the ETag.
+
+### Prompt Context
+
+**User prompt (verbatim):** "http://localhost:8099/artifact/517687de-6ed6-4c5b-8a97-483093cc4389/artifacts/attune-studio \n\nThis one is odd because it seems to have a CSS issue or something, compared to how it looks in the claude.ai browser."
+
+**Assistant interpretation:** Diagnose why this artifact looks unstyled here versus claude.ai and fix it.
+
+**Inferred user intent:** Artifacts should render with the same fidelity as in the claude.ai app.
+
+**Commit (code):** 8ddd2e5 — "fix: load Tailwind in the JSX host page so utility-class artifacts render like claude.ai"
+
+### What I did
+- Confirmed the cause: the source had 113 Tailwind utility-class tokens across 53 `className`s (`grep`), 0 styled-components/emotion, some inline styles — so the layout depends on Tailwind.
+- Added `<script src="https://cdn.tailwindcss.com"></script>` to `jsx-host.html` (runtime JIT, DOM observer — styles React content added after mount).
+- Added `renderEnvVersion = "tw1"` in `thumbnail.go`, folded into `pathFor` (`<hash>-<ver>.png`) and a new `etag(hash)`; `handleThumb` now uses `s.thumbs.etag(hash)`.
+
+### Why
+- The Play CDN is exactly how claude.ai supplies Tailwind to artifacts, and it matches the page's existing network dependencies (React from esm.sh, Babel from unpkg). Its preflight is also part of the claude.ai environment the artifact was authored against, so always loading it is *more* faithful.
+- Content-hash thumbnails don't notice a render-env change; without a version, edited-environment thumbnails stay stale on disk and in the browser (ETag = content hash → 304).
+
+### What worked
+- Playwright showed the artifact rendering as its intended two-pane IDE (dark theme, code editor + room panel), matching claude.ai. 0 console errors (only Tailwind's "not for production" warning).
+
+### What didn't work
+- N/A (clean once the cause was identified).
+
+### What I learned
+- The thumbnail cache key must include everything that affects the rendered pixels, not just the artifact bytes — the render environment is part of the key. This generalizes: any future host-template change that alters output should bump `renderEnvVersion`.
+
+### What was tricky to build
+- The staleness was non-obvious: after adding Tailwind, the *live* detail-page iframe updated immediately (it re-renders `/view`), but gallery thumbnails would have silently stayed the old broken renders because their content hash is unchanged. Realizing the ETag (also content-hash-based) would serve stale bytes even after a disk regeneration led to versioning both the path and the ETag with one constant.
+
+### What warrants a second pair of eyes
+- `renderEnvVersion` is a manual constant — reviewers should confirm the intent that it is bumped on any output-affecting host/template change.
+
+### What should be done in the future
+- If an HTML artifact shows the same Tailwind-less symptom, decide whether to inject Tailwind into raw HTML artifacts too (currently only the JSX host page loads it).
+- Offline: vendor Tailwind and localize it alongside React/Babel.
+
+### Code review instructions
+- `pkg/server/templates/jsx-host.html` (the CDN script); `pkg/server/thumbnail.go` (`renderEnvVersion`, `pathFor`, `etag`); `handleThumb` in `server.go`.
+- Validate: open a Tailwind-using artifact's `/view`; confirm `/thumb` paths are `<hash>-tw1.png`.
+
+### Technical details
+- Bumping `renderEnvVersion` orphans old `<hash>.png`/`<hash>-tw*.png` files (harmless) and forces regeneration + browser refetch.
+
+## Step 11: Render the transcript as HTML instead of raw markdown
+
+`/transcript/{name}` served the raw `conversation.md` as `text/markdown`, which browsers download or show as plain text. This step renders it to a readable HTML page with goldmark (already in the module graph via glamour), so the transcript is pleasant to read in place.
+
+### Prompt Context
+
+**User prompt (verbatim):** "render transcript as markdown. then test also the collections functionality"
+
+**Assistant interpretation:** Render the stored transcript markdown into a styled HTML reading view (and, separately, exercise collections — see Step 12).
+
+**Inferred user intent:** Read a conversation transcript in the browser without it downloading as a `.md` file.
+
+**Commit (code):** 7236139 — "feat: render the transcript as HTML (goldmark) instead of serving raw markdown"
+
+### What I did
+- Added `templates/transcript.html` (readable typography, turn headers styled, sticky nav bar with back-to-artifact / index / `session ⬇`).
+- Rewrote `handleTranscript` to read `conversation.md`, convert with a `goldmark.Markdown` (GFM) held on the `Server`, and render the template with the body as `template.HTML`.
+- Added `encodePathSegments` (url-escape each slash-separated segment) for path-safe URLs in the template.
+
+### Why
+- goldmark is already a dependency and self-contained (no CDN); GFM covers tables/etc. Raw HTML is left disabled (default), so the transcript can't inject markup.
+
+### What worked
+- Verified: `Content-Type: text/html`, `<h1>` title and `<h2>Human`/`<h2>Assistant` turn headers, tool-call markers (`_[create_file: ...]_`) rendered as gray italics. Playwright confirmed the styled reading view.
+
+### What didn't work
+- N/A.
+
+### What I learned
+- `template.HTML(body.String())` is safe here specifically because goldmark's default renderer escapes raw HTML in the source; enabling `WithUnsafe` would change that calculus.
+
+### What was tricky to build
+- Nothing structural; the main care was not enabling goldmark unsafe HTML while still injecting the rendered output as trusted `template.HTML`.
+
+### What warrants a second pair of eyes
+- The `template.HTML` injection point — confirm goldmark unsafe-HTML stays off so the transcript content can't smuggle markup.
+
+### What should be done in the future
+- Optionally syntax-highlight fenced code blocks inside the transcript (currently plain `<pre>`).
+
+### Code review instructions
+- `pkg/server/server.go`: `handleTranscript`, `encodePathSegments`, the `markdown` field + `goldmark.New(...WithExtensions(extension.GFM))`.
+- `pkg/server/templates/transcript.html`.
+- Validate: `curl -s localhost:PORT/transcript/<name> | grep '<h2>'`.
+
+### Technical details
+- Transcript nav links use `encodePathSegments(art.Name)` so multi-segment names stay path-correct.
+
+## Step 12: Collections + tags — UX fixes surfaced by testing, footer restyle, and a 404 sentinel
+
+The user asked to test collections (and, separately, to experiment with tags, and that the card footer looked bad). Exercising the features end to end surfaced three real defects plus the cosmetic complaint, all fixed here. This is the step where the diary had lapsed; testing is what caught the regressions.
+
+### Prompt Context
+
+**User prompt (verbatim):** "render transcript as markdown. then test also the collections functionality" — plus, mid-work: "also experiment with adding tags and such, btw" and "the -remove/+collection thing looks ugly af"
+
+**Assistant interpretation:** Validate collections (create/add/filter/remove/delete) and tags (add/facet/filter/remove) end to end, fix anything broken, and clean up the ugly card footer.
+
+**Inferred user intent:** Confirm the organization features actually work in the UI, and make the card actions look decent.
+
+**Commit (code):** 9a9c080 — "fix(collections): restyle card footer, refresh UI on create/filter, 404 on missing collection"
+
+### What I did
+- **Footer restyle** (`index.html`): replaced the always-red "− remove" and full-size `＋ collection…` select with a clean split — left group (`view` / `claude.ai`), right group (a small `✕` remove + a compact bordered `＋ collection` select).
+- **Create refresh**: creating a collection re-rendered the sidebar but not the cards, so a card's dropdown lacked the new collection until reload; now creation also calls `reload()`.
+- **Filter refresh**: selecting a collection filtered results but left the sidebar unchanged (no active highlight, no "✕ show all"); added `setCollection(id)` that re-renders sidebar + results together, and routed the sidebar rows through it.
+- **404 sentinel** (`userdata/store.go`): added `ErrCollectionNotFound`, returned from `AddToCollection`/`RemoveFromCollection`/`ReorderCollection` when the collection is missing/unowned; a new `collectionErr` helper in `server.go` maps it to 404 (was 500). Added `TestCollectionNotFoundSentinel` and extended the ownership test.
+
+### Why
+- A client asking to modify a nonexistent collection is a 4xx, not a server fault.
+- The sidebar and card dropdowns both read the `collections` array and `state.collection`; any state change must re-render both to stay consistent.
+
+### What worked
+- API sequence verified: create → add two → filter (exactly those two) → count=2 → remove one (→1) → idempotent re-add (stays 1) → delete (cascade removes items). Error path now returns 404. Tags verified: add (API + card `+tag` input), idempotent, facet counts (`eink 2`, `demo 1`), filter, remove. Playwright confirmed the sidebar active/"show all" states and the clean footer.
+
+### What didn't work
+- First attempt at the create-refresh called `renderCards(lastResults, false)`, but `lastResults` doesn't exist (results aren't retained across "Load more" appends). Changed to `loadCollections().then(reload)`.
+- Testing found the 500-on-missing-collection and the two stale-render gaps — these were the bugs, recorded here as the reason the step exists.
+
+### What I learned
+- The "add item to bad id → 500" only shows up when you actually drive the error path; the happy-path tests all passed. Adversarial API probing (bad ids, empty names, deleted collections) is what surfaced it.
+
+### What was tricky to build
+- The two stale-render bugs shared a root cause: mutations to collection state were calling `reload()` (which re-renders facets + cards) or `loadCollections()` (which re-renders the collections sidebar) but never both. The fix was to funnel collection-filter changes through one `setCollection()` that does both, and to have collection *creation* trigger a card re-render so dropdowns pick up the new option.
+
+### What warrants a second pair of eyes
+- `setCollection()` re-renders the sidebar from inside a click handler on a sidebar row it then replaces; confirm there's no stale-closure/double-handler issue (the click has already fired before the DOM is rebuilt).
+- The `errors.Is(err, userdata.ErrCollectionNotFound)` mapping — confirm all three store methods wrap the sentinel with `%w`.
+
+### What should be done in the future
+- N/A beyond Step 13 (the tag double-render, split out below).
+
+### Code review instructions
+- `pkg/userdata/store.go`: `ErrCollectionNotFound` + the three `%w`-wrapped returns; `store_test.go` `TestCollectionNotFoundSentinel`.
+- `pkg/server/server.go`: `collectionErr`, the item handlers.
+- `pkg/server/templates/index.html`: `setCollection`, the create handler's `.then(reload)`, the `.links`/`.lg`/`.rg`/`.addcol`/`.rmcol` CSS and footer markup.
+- Validate: `go test ./pkg/userdata/ -run Collection`; drive the API sequence above; `curl` an add to a missing id → 404.
+
+### Technical details
+- Item add/remove handlers: `POST` / `DELETE /api/collections/{id}/items` (DELETE reads `key` from the query, since Go `FormValue` doesn't parse DELETE bodies).
+
+## Step 13: Show each tag once on a card
+
+A user tag rendered twice on each card — once in the gray, filterable tag row and once as a removable blue chip — because the gray row drew `d.tags` (manifest ∪ user tags) while the editor row drew the user tags again. This step filters the gray row to manifest-only tags so each tag appears once.
+
+### Prompt Context
+
+**User prompt (verbatim):** "tags appear twice now (one with the X, one without the X) on each card."
+
+**Assistant interpretation:** Deduplicate the card's tag display so a user tag shows only once (as its removable chip).
+
+**Inferred user intent:** A clean tag display without visible duplication.
+
+**Commit (code):** 638736c — "fix(index): show each tag once on a card (manifest-only in the gray row)"
+
+### What I did
+- In `buildCard` (`index.html`), built a case-insensitive set of `d.user_tags` and filtered `d.tags` down to manifest-only tags for the gray `.tag` row; user tags continue to render as removable `.utag` chips in the editor row.
+
+### Why
+- `d.tags` is `mergedTags` (manifest ∪ user, deduped case-insensitively) — good for the tag facet, but it means user tags also appear in the gray row, duplicating the editor row.
+
+### What worked
+- Playwright confirmed each card now renders a given user tag once (gray row empty for artifacts with no manifest tags; user tags only as `×` chips).
+
+### What didn't work
+- N/A.
+
+### What I learned
+- The detail page (`artifact.html` `renderTags`) already rendered each tag once (styling it user vs manifest); only the index card had two separate rows, hence the duplication was index-only.
+
+### What was tricky to build
+- The dedup must be case-insensitive because `mergedTags` dedups case-insensitively; comparing raw strings could keep a differently-cased duplicate.
+
+### What warrants a second pair of eyes
+- Confirm the gray (filterable) row still surfaces genuine manifest tags — the filter only removes tags that are in `user_tags`.
+
+### What should be done in the future
+- Consider unifying the two card rows into one (like the detail page), where user tags are both filterable and removable.
+
+### Code review instructions
+- `pkg/server/templates/index.html`: the `userSet`/`manifestTags` filter in `buildCard`.
+- Validate: add a user tag to a card, confirm it appears once (as the `×` chip), and the tag facet still counts it.
+
+### Technical details
+- `manifestTags = d.tags.filter(t => !userSet[t.toLowerCase()])`.
