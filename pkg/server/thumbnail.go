@@ -32,6 +32,12 @@ const (
 	settleDelay   = 700 * time.Millisecond
 )
 
+// renderEnvVersion changes whenever the /view rendering environment changes in a
+// way that alters output (e.g. adding Tailwind to the JSX host page). It is part
+// of both the on-disk cache path and the HTTP ETag, so bumping it invalidates
+// every cached thumbnail without touching artifact content hashes.
+const renderEnvVersion = "tw1"
+
 // Thumbnailer renders an artifact (identified by the /view URL that runs it) to a
 // PNG. renderOK reports whether the artifact mounted without a console error or
 // uncaught exception, which the reliability/health check (§6 of the design)
@@ -76,7 +82,13 @@ func newThumbCache(dir, baseURL string, engine Thumbnailer, maxConcurrent int) (
 }
 
 func (c *thumbCache) pathFor(hash string) string {
-	return filepath.Join(c.dir, hash+".png")
+	return filepath.Join(c.dir, hash+"-"+renderEnvVersion+".png")
+}
+
+// etag is the HTTP ETag for a thumbnail: the content hash plus the render-env
+// version, so a render-environment change forces browsers to refetch.
+func (c *thumbCache) etag(hash string) string {
+	return `"` + hash + "-" + renderEnvVersion + `"`
 }
 
 // cachedPath returns the on-disk thumbnail path if it already exists.

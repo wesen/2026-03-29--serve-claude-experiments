@@ -620,7 +620,7 @@ func (s *Server) handleThumb(w http.ResponseWriter, r *http.Request) {
 		}
 		hash = contentHash(string(b))
 	}
-	etag := `"` + hash + `"`
+	etag := s.thumbs.etag(hash)
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return

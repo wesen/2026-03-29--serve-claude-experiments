@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{.Title}} — Artifact Viewer</title>
+  <!-- Tailwind runtime (Play CDN), matching the claude.ai artifact environment so
+       utility classes (flex, bg-*, p-*, rounded, ...) are styled as authored. It
+       JITs CSS by observing the DOM, so it also styles React content added after
+       mount. -->
+  <script src="https://cdn.tailwindcss.com"></script>
   <script type="importmap">
   {
     "imports": {
