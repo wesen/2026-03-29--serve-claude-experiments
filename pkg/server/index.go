@@ -37,12 +37,15 @@ func contentHash(body string) string {
 // searchIndex is a cached, in-memory index rebuilt on demand (startup + file
 // watch). Reads take an RLock; a rebuild swaps the slice under a Lock.
 type searchIndex struct {
-	mu      sync.RWMutex
-	scanner *artifacts.Scanner
-	entries []indexEntry
+	mu           sync.RWMutex
+	scanner      *artifacts.Scanner
+	projectNames map[string]string // project uuid -> display name (from projects.json)
+	entries      []indexEntry
 }
 
-func newSearchIndex(sc *artifacts.Scanner) *searchIndex { return &searchIndex{scanner: sc} }
+func newSearchIndex(sc *artifacts.Scanner, projectNames map[string]string) *searchIndex {
+	return &searchIndex{scanner: sc, projectNames: projectNames}
+}
 
 // rebuild re-scans the directory and reads each artifact's source (and transcript)
 // to populate the full-text haystack and library facet. Transcript files are read
@@ -55,6 +58,10 @@ func (ix *searchIndex) rebuild() error {
 	transcriptCache := map[string]string{}
 	entries := make([]indexEntry, 0, len(arts))
 	for _, a := range arts {
+		// Resolve the project UUID to its human name for display/faceting/filtering.
+		if name, ok := ix.projectNames[a.Project]; ok && name != "" {
+			a.Project = name
+		}
 		body := ""
 		if b, err := os.ReadFile(a.Path); err == nil {
 			body = string(b)

@@ -48,6 +48,7 @@ type Server struct {
 	index              *searchIndex
 	store              *userdata.Store
 	thumbs             *thumbCache
+	projectNames       map[string]string
 	dir                string
 	port               int
 	watch              bool
@@ -89,6 +90,7 @@ var templateFuncs = template.FuncMap{
 // New creates a new artifact server.
 func New(cfg Config) (*Server, error) {
 	scanner := artifacts.NewScanner(cfg.Dir)
+	projectNames := loadProjectNames(cfg.Dir)
 
 	indexTmpl, err := template.New("index.html").Funcs(templateFuncs).ParseFS(templateFS, "templates/index.html")
 	if err != nil {
@@ -152,9 +154,10 @@ func New(cfg Config) (*Server, error) {
 
 	return &Server{
 		scanner:            scanner,
-		index:              newSearchIndex(scanner),
+		index:              newSearchIndex(scanner, projectNames),
 		store:              store,
 		thumbs:             thumbs,
+		projectNames:       projectNames,
 		dir:                cfg.Dir,
 		port:               cfg.Port,
 		watch:              cfg.Watch,
@@ -166,6 +169,33 @@ func New(cfg Config) (*Server, error) {
 		transcriptTemplate: transcriptTmpl,
 		markdown:           goldmark.New(goldmark.WithExtensions(extension.GFM)),
 	}, nil
+}
+
+// loadProjectNames reads <dir>/projects.json, a map of project UUID -> display
+// name (or a list of {uuid,name} objects), used to show human project names
+// instead of raw UUIDs. Missing/unparseable file yields an empty map.
+func loadProjectNames(dir string) map[string]string {
+	out := map[string]string{}
+	b, err := os.ReadFile(filepath.Join(dir, "projects.json"))
+	if err != nil {
+		return out
+	}
+	if json.Unmarshal(b, &out) == nil && len(out) > 0 {
+		return out
+	}
+	var list []struct {
+		UUID string `json:"uuid"`
+		Name string `json:"name"`
+	}
+	if json.Unmarshal(b, &list) == nil {
+		out = map[string]string{}
+		for _, p := range list {
+			if p.UUID != "" && p.Name != "" {
+				out[p.UUID] = p.Name
+			}
+		}
+	}
+	return out
 }
 
 // defaultDBPath returns the default SQLite location under the user config dir.
@@ -803,13 +833,17 @@ func (s *Server) handleArtifactJSON(w http.ResponseWriter, r *http.Request) {
 	userTags, _ := s.store.TagsFor(user, name)
 	doc.UserTags = userTags
 	doc.Tags = mergeTags(art.Tags, userTags)
+	project := art.Project
+	if name, ok := s.projectNames[project]; ok && name != "" {
+		project = name
+	}
 	writeJSON(w, map[string]any{
 		"artifact":       doc,
 		"has_transcript": art.TranscriptPath != "",
 		"claude_url":     art.ClaudeURL,
 		"warnings":       art.Warnings,
 		"size":           art.Size,
-		"project":        art.Project,
+		"project":        project,
 		"created_at":     art.ConversationCreatedAt,
 	})
 }
