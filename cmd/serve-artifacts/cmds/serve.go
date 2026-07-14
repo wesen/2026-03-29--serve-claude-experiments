@@ -10,6 +10,8 @@ func NewServeCmd() *cobra.Command {
 	var dir string
 	var watch bool
 	var db string
+	var thumbs string
+	var noThumbs bool
 
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -29,10 +31,12 @@ Examples:
   serve-artifacts serve --dir ~/claude-artifacts --watch`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := server.Config{
-				Dir:    dir,
-				Port:   port,
-				Watch:  watch,
-				DBPath: db,
+				Dir:       dir,
+				Port:      port,
+				Watch:     watch,
+				DBPath:    db,
+				ThumbsDir: thumbs,
+				NoThumbs:  noThumbs,
 			}
 			srv, err := server.New(cfg)
 			if err != nil {
@@ -46,6 +50,8 @@ Examples:
 	cmd.Flags().StringVarP(&dir, "dir", "d", ".", "Directory containing artifacts")
 	cmd.Flags().BoolVarP(&watch, "watch", "w", false, "Watch for file changes and auto-reload browsers")
 	cmd.Flags().StringVar(&db, "db", "", "SQLite database for favorites/tags/collections (default: user config dir)")
+	cmd.Flags().StringVar(&thumbs, "thumbs", "", "Thumbnail cache directory (default: user cache dir)")
+	cmd.Flags().BoolVar(&noThumbs, "no-thumbnails", false, "Disable thumbnail generation (no headless Chrome)")
 
 	return cmd
 }

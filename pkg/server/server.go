@@ -36,6 +36,7 @@ type Server struct {
 	scanner         *artifacts.Scanner
 	index           *searchIndex
 	store           *userdata.Store
+	thumbs          *thumbCache
 	dir             string
 	port            int
 	watch           bool
@@ -47,10 +48,12 @@ type Server struct {
 
 // Config holds server configuration.
 type Config struct {
-	Dir    string
-	Port   int
-	Watch  bool
-	DBPath string // SQLite path for user data; empty = default under the config dir
+	Dir       string
+	Port      int
+	Watch     bool
+	DBPath    string // SQLite path for user data; empty = default under the config dir
+	ThumbsDir string // thumbnail cache dir; empty = default under the user cache dir
+	NoThumbs  bool   // disable thumbnail generation entirely
 }
 
 var templateFuncs = template.FuncMap{
@@ -108,10 +111,25 @@ func New(cfg Config) (*Server, error) {
 	}
 	log.Printf("User data (favorites/tags/collections): %s", dbPath)
 
+	var thumbs *thumbCache
+	if !cfg.NoThumbs {
+		thumbsDir := cfg.ThumbsDir
+		if thumbsDir == "" {
+			thumbsDir = defaultThumbsDir()
+		}
+		baseURL := fmt.Sprintf("http://localhost:%d", cfg.Port)
+		thumbs, err = newThumbCache(thumbsDir, baseURL, newChromedpEngine(), defaultThumbConcurrency())
+		if err != nil {
+			return nil, err
+		}
+		log.Printf("Thumbnails: %s (Chrome starts on first request)", thumbsDir)
+	}
+
 	return &Server{
 		scanner:         scanner,
 		index:           newSearchIndex(scanner),
 		store:           store,
+		thumbs:          thumbs,
 		dir:             cfg.Dir,
 		port:            cfg.Port,
 		watch:           cfg.Watch,
@@ -162,6 +180,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /raw/{name...}", s.handleRaw)
 	mux.HandleFunc("GET /compiled/{name...}", s.handleCompiledJSX)
 	mux.HandleFunc("GET /jsx/{name...}", s.handleJSX)
+	mux.HandleFunc("GET /thumb/{name...}", s.handleThumb)
 
 	if s.watch && s.watcher != nil {
 		// Rebuild the index whenever the directory changes, before clients reload.
@@ -184,8 +203,18 @@ func (s *Server) Run(ctx context.Context) error {
 		Handler: mux,
 	}
 
+	// Kick off a background backfill so scrolling the gallery is smooth: render
+	// any thumbnail whose <hash>.png is missing, throttled by the same semaphore
+	// as live requests so it never competes with them.
+	if s.thumbs != nil {
+		go s.backfillThumbnails(ctx)
+	}
+
 	go func() {
 		<-ctx.Done()
+		if s.thumbs != nil {
+			s.thumbs.close()
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		srv.Shutdown(shutdownCtx)
@@ -236,8 +265,19 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		Offset:     atoiDefault(q.Get("offset"), 0),
 	}
 	uv := s.userView(currentUser(r), query.Collection)
+	res := s.index.search(query, uv)
+	// Attach the mounted-cleanly bit for any artifact rendered this run (§6
+	// health check reuses the thumbnail render pass). Left nil when unknown.
+	if s.thumbs != nil {
+		for i := range res.Results {
+			if ok, known := s.thumbs.renderStatus(res.Results[i].Hash); known {
+				v := ok
+				res.Results[i].RenderOK = &v
+			}
+		}
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(s.index.search(query, uv)); err != nil {
+	if err := json.NewEncoder(w).Encode(res); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -527,4 +567,89 @@ func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.ServeFile(w, r, artifact.Path)
+}
+
+// handleThumb serves a PNG thumbnail for an artifact, generated on demand and
+// cached by content hash. On any failure (no Chrome, render error) it serves a
+// neutral placeholder rather than an HTTP error, so the gallery degrades
+// gracefully. Responses carry an ETag of the content hash so an unchanged
+// artifact revalidates to 304 while an edited one (new hash) is refetched.
+func (s *Server) handleThumb(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if s.thumbs == nil {
+		servePlaceholderThumb(w)
+		return
+	}
+	hash, ok := s.index.hashByName(name)
+	if !ok {
+		// The index may not yet know a just-added artifact; hash from disk.
+		art, err := s.scanner.FindByName(name)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		b, err := os.ReadFile(art.Path)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		hash = contentHash(string(b))
+	}
+	etag := `"` + hash + `"`
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	png, err := s.thumbs.get(r.Context(), name, hash)
+	if err != nil {
+		log.Printf("thumbnail %s: %v", name, err)
+		servePlaceholderThumb(w)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("ETag", etag)
+	w.Write(png)
+}
+
+func servePlaceholderThumb(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write(placeholderPNG())
+}
+
+// backfillThumbnails pre-renders any missing thumbnail after startup so the
+// gallery is warm. It walks the index, skips artifacts whose <hash>.png already
+// exists, and renders the rest through the same bounded/singleflighted path as
+// live requests (so it never competes with them). Re-run is safe and cheap.
+func (s *Server) backfillThumbnails(ctx context.Context) {
+	// Give the HTTP listener a moment to come up (renders navigate to /view).
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(500 * time.Millisecond):
+	}
+	arts := s.index.artifactList()
+	rendered := 0
+	for _, a := range arts {
+		if ctx.Err() != nil {
+			return
+		}
+		hash, ok := s.index.hashByName(a.Name)
+		if !ok {
+			continue
+		}
+		if _, cached := s.thumbs.cachedPath(hash); cached {
+			continue
+		}
+		if _, err := s.thumbs.get(ctx, a.Name, hash); err != nil {
+			// A single failure (e.g. no Chrome) makes the whole backfill pointless.
+			log.Printf("thumbnail backfill stopped after %d rendered: %v", rendered, err)
+			return
+		}
+		rendered++
+	}
+	if rendered > 0 {
+		log.Printf("thumbnail backfill complete: %d rendered", rendered)
+	}
 }
