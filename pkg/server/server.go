@@ -209,6 +209,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /compiled/{name...}", s.handleCompiledJSX)
 	mux.HandleFunc("GET /jsx/{name...}", s.handleJSX)
 	mux.HandleFunc("GET /thumb/{name...}", s.handleThumb)
+	mux.HandleFunc("POST /thumb/{name...}", s.handleThumbSave)
+	mux.HandleFunc("POST /api/thumb/rerender/{name...}", s.handleThumbRerender)
 	mux.HandleFunc("GET /artifact/{name...}", s.handleArtifactPage)
 	mux.HandleFunc("GET /api/artifact/{name...}", s.handleArtifactJSON)
 	mux.HandleFunc("GET /transcript/{name...}", s.handleTranscript)
@@ -671,6 +673,74 @@ func servePlaceholderThumb(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Write(placeholderPNG())
+}
+
+// thumbHash resolves an artifact name to its content hash (the thumbnail cache
+// key), preferring the in-memory index and falling back to hashing the file.
+func (s *Server) thumbHash(name string) (string, bool) {
+	if h, ok := s.index.hashByName(name); ok {
+		return h, true
+	}
+	art, err := s.scanner.FindByName(name)
+	if err != nil {
+		return "", false
+	}
+	b, err := os.ReadFile(art.Path)
+	if err != nil {
+		return "", false
+	}
+	return contentHash(string(b)), true
+}
+
+// handleThumbSave stores a user-supplied PNG (captured from the live artifact in
+// the browser) as the artifact's thumbnail, replacing a mediocre auto-generated
+// one. The body is the raw PNG bytes.
+func (s *Server) handleThumbSave(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if s.thumbs == nil {
+		http.Error(w, "thumbnails disabled", http.StatusServiceUnavailable)
+		return
+	}
+	hash, ok := s.thumbHash(name)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 25<<20)) // 25 MB cap
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := s.thumbs.saveUploaded(hash, body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "hash": hash})
+}
+
+// handleThumbRerender discards the cached thumbnail and renders a fresh one
+// server-side (real headless Chrome), for artifacts a client-side capture can't
+// handle (e.g. WebGL) or when the base render was captured too early.
+func (s *Server) handleThumbRerender(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if s.thumbs == nil {
+		http.Error(w, "thumbnails disabled", http.StatusServiceUnavailable)
+		return
+	}
+	hash, ok := s.thumbHash(name)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if err := s.thumbs.invalidate(hash); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if _, err := s.thumbs.get(r.Context(), name, hash); err != nil {
+		writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "hash": hash})
 }
 
 // backfillThumbnails pre-renders any missing thumbnail after startup so the

@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{.Title}} — Artifact</title>
+<!-- html2canvas: rasterize the live artifact iframe so the current (interacted)
+     view can be saved as the thumbnail. -->
+<script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Geneva','Helvetica Neue',Helvetica,sans-serif; font-size: 13px; background: #fff; }
@@ -36,6 +39,8 @@
   select { font: inherit; font-size: 11px; border: 1px solid #999; background: #fff; }
   .warnings { font-size: 11px; color: #b91c1c; }
   .warnings li { margin-left: 16px; }
+  .thumbprev { width: 100%; border: 1px solid #000; display: block; margin-bottom: 6px; background: #f2f2f2; min-height: 40px; }
+  .thumbctl { display: flex; gap: 6px; flex-wrap: wrap; }
   .src { border: 2px solid #000; box-shadow: 2px 2px 0 #000; background: #fbfbfb; margin-top: 16px; }
   .src h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 6px 10px; border-bottom: 2px solid #000; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .srcbtns { display: flex; gap: 6px; }
@@ -73,6 +78,15 @@
             <a id="transcript" href="#" target="_blank" style="display:none">transcript ▸</a>
             <a id="session" href="#" style="display:none" title="Download the whole conversation (transcript + JSON + all artifacts)">session ⬇</a>
           </div>
+        </div>
+        <div class="box">
+          <h3>Thumbnail</h3>
+          <img id="thumbprev" class="thumbprev" alt="thumbnail">
+          <div class="thumbctl">
+            <button id="capture" class="sbtn" title="Capture the current view as the thumbnail (c)">📸 capture view</button>
+            <button id="rerender" class="sbtn" title="Re-render a fresh server-side screenshot">↻ re-render</button>
+          </div>
+          <div id="thumbmsg" class="muted" style="font-size:10px;margin-top:4px"></div>
         </div>
         <div class="box">
           <h3>Metadata</h3>
@@ -210,6 +224,42 @@
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
   };
 
+  // thumbnail: preview + recapture. "capture view" rasterizes the current iframe
+  // (what you see after interacting) and saves it; "re-render" asks the server for
+  // a fresh headless-Chrome screenshot (reliable for WebGL / early-captured bases).
+  function refreshThumbPreview(){ el("thumbprev").src = "/thumb/" + enc + "?v=" + Date.now(); }
+  refreshThumbPreview();
+  function thumbMsg(m){ el("thumbmsg").textContent = m; }
+  function setThumbFromView(){
+    var iframe = el("frame"); var win = iframe.contentWindow, doc = iframe.contentDocument;
+    if (!doc){ thumbMsg("preview not ready"); return; }
+    if (!window.html2canvas){ thumbMsg("capture library unavailable"); return; }
+    thumbMsg("capturing…");
+    window.html2canvas(doc.body, {
+      backgroundColor: "#ffffff", logging: false, useCORS: true, allowTaint: false,
+      x: win.scrollX || 0, y: win.scrollY || 0,
+      width: iframe.clientWidth, height: iframe.clientHeight, scrollX: 0, scrollY: 0,
+      windowWidth: doc.documentElement.scrollWidth, windowHeight: doc.documentElement.scrollHeight
+    }).then(function(canvas){
+      canvas.toBlob(function(blob){
+        if (!blob){ thumbMsg("capture produced no image"); return; }
+        fetch("/thumb/" + enc, { method:"POST", headers:{"Content-Type":"image/png"}, body:blob })
+          .then(function(r){ return r.ok ? r.json() : r.text().then(function(t){ throw new Error(t); }); })
+          .then(function(){ refreshThumbPreview(); thumbMsg("thumbnail updated ✓ (from this view)"); })
+          .catch(function(e){ thumbMsg("save failed: " + e.message); });
+      }, "image/png");
+    }).catch(function(e){ thumbMsg("capture failed: " + (e && e.message || e) + " — try re-render"); });
+  }
+  function rerenderThumb(){
+    thumbMsg("re-rendering (server)…");
+    fetch("/api/thumb/rerender/" + enc, { method:"POST" })
+      .then(function(r){ return r.json(); })
+      .then(function(res){ if (res.ok){ refreshThumbPreview(); thumbMsg("re-rendered ✓"); } else { thumbMsg("re-render failed: " + (res.error||"")); } })
+      .catch(function(){ thumbMsg("re-render failed"); });
+  }
+  el("capture").onclick = setThumbFromView;
+  el("rerender").onclick = rerenderThumb;
+
   // theater mode: hide the sidebar for a larger preview. Toggle with the button,
   // the 't' key, or exit with Escape.
   function toggleTheater(){ document.body.classList.toggle("theater"); el("theater").classList.toggle("on", document.body.classList.contains("theater")); }
@@ -218,6 +268,7 @@
     var tag = (e.target.tagName||"").toLowerCase();
     if (tag==="input"||tag==="textarea"||tag==="select") return;
     if (e.key==="t"){ toggleTheater(); }
+    else if (e.key==="c"){ setThumbFromView(); }
     else if (e.key==="Escape" && document.body.classList.contains("theater")){ toggleTheater(); }
   });
 

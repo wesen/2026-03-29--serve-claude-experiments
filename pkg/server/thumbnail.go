@@ -100,6 +100,39 @@ func (c *thumbCache) cachedPath(hash string) (string, bool) {
 	return "", false
 }
 
+// saveUploaded validates a user-supplied PNG, downscales it to the thumbnail
+// width, and stores it as the artifact's thumbnail, replacing the auto-generated
+// one. Because it writes to the cache path, the backfill (which only renders
+// missing thumbnails) will not overwrite it.
+func (c *thumbCache) saveUploaded(hash string, data []byte) error {
+	if _, err := png.Decode(bytes.NewReader(data)); err != nil {
+		return fmt.Errorf("not a valid PNG: %w", err)
+	}
+	small, err := downscalePNG(data, thumbWidth)
+	if err != nil {
+		small = data
+	}
+	if err := writeFileAtomic(c.pathFor(hash), small); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.renderOK[hash] = true
+	c.mu.Unlock()
+	return nil
+}
+
+// invalidate removes the cached thumbnail for a hash so the next request (or an
+// explicit get) regenerates it from a fresh render.
+func (c *thumbCache) invalidate(hash string) error {
+	c.mu.Lock()
+	delete(c.renderOK, hash)
+	c.mu.Unlock()
+	if err := os.Remove(c.pathFor(hash)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 // get returns the thumbnail bytes for (name, hash), generating and caching them
 // on first request. Concurrent callers for the same hash share one render.
 func (c *thumbCache) get(ctx context.Context, name, hash string) ([]byte, error) {
