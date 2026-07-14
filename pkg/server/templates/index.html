@@ -75,6 +75,30 @@
   .rmeta { font-size: 11px; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .more { margin: 16px auto 0; display: block; font: inherit; padding: 6px 16px; border: 2px solid #000; background: #fff; box-shadow: 2px 2px 0 #000; cursor: pointer; }
   .empty { padding: 30px; text-align: center; color: #666; }
+  .card.selected, .row.selected { outline: 3px solid #2563eb; outline-offset: 1px; }
+  /* command palette */
+  .palette-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; z-index: 1000; }
+  .palette-box { width: 560px; max-width: 92vw; background: #fff; border: 2px solid #000; box-shadow: 4px 4px 0 #000; }
+  .palette-input { width: 100%; font: inherit; font-size: 15px; padding: 10px 12px; border: none; border-bottom: 2px solid #000; outline: none; background: #fff; color: inherit; }
+  .palette-results { max-height: 50vh; overflow-y: auto; }
+  .pr { display: flex; gap: 8px; align-items: center; padding: 7px 12px; cursor: pointer; border-bottom: 1px solid #eee; }
+  .pr .pr-title { flex: 1; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pr .pr-meta { font-size: 11px; color: #777; }
+  .pr.sel { background: #2563eb; color: #fff; } .pr.sel .pr-meta { color: #dbe6ff; }
+  /* dark mode */
+  body.dark { background: #191919; color: #e6e6e6; }
+  body.dark .subtitle, body.dark .meta, body.dark .rmeta, body.dark .count, body.dark .empty, body.dark .facet-val .fcount { color: #9a9a9a; }
+  body.dark .search-input, body.dark select, body.dark .vbtn, body.dark .card, body.dark .row, body.dark .more, body.dark .palette-box, body.dark .palette-input { background: #262626; color: #e6e6e6; border-color: #777; }
+  body.dark .card { box-shadow: 2px 2px 0 #000; }
+  body.dark .card a.card-title, body.dark .rtitle, body.dark .clear, body.dark a { color: #cfe0ff; }
+  body.dark .facet-group h3, body.dark .facet-val { border-color: #555; }
+  body.dark .facet-val:hover, body.dark .facet-val.active, body.dark .vbtn.active, body.dark .tag:hover { background: #cfe0ff; color: #191919; }
+  body.dark .tag, body.dark .chip { background: #333; border-color: #666; color: #ddd; }
+  body.dark .utag { background: #24354d; border-color: #4a6fa5; color: #cfe0ff; }
+  body.dark .addtag, body.dark .addcol { background: #262626; color: #e6e6e6; border-color: #666; }
+  body.dark .thumb-wrap, body.dark .rthumb { border-color: #444; }
+  body.dark .pr { border-color: #333; }
+  body.dark .palette-input { border-bottom-color: #777; }
 </style>
 </head>
 <body>
@@ -95,6 +119,8 @@
           <button id="view-grid" class="vbtn" title="Grid view">▦</button>
           <button id="view-list" class="vbtn" title="List view">☰</button>
         </span>
+        <button id="theme" class="vbtn" title="Toggle dark mode (d)">◐</button>
+        <button id="palette-btn" class="vbtn" title="Command palette (⌘K)">⌘K</button>
         <span id="count" class="count"></span>
       </div>
 
@@ -110,6 +136,13 @@
           <div id="empty" class="empty" style="display:none">No artifacts match.</div>
         </main>
       </div>
+  </div>
+
+  <div id="palette" class="palette-overlay" style="display:none">
+    <div class="palette-box">
+      <input id="palette-input" class="palette-input" type="text" placeholder="Jump to an artifact…" autocomplete="off" />
+      <div id="palette-results" class="palette-results"></div>
+    </div>
   </div>
 
 <script>
@@ -240,7 +273,7 @@
   function renderCards(results, append){
     var grid = el("grid");
     grid.classList.toggle("list", state.view==="list");
-    if (!append) grid.innerHTML = "";
+    if (!append) { grid.innerHTML = ""; selIdx = -1; }
     el("empty").style.display = (results.length===0 && !append && lastTotal===0) ? "block" : "none";
     results.forEach(function(d){
       grid.appendChild(state.view==="list" ? buildRow(d) : buildCard(d));
@@ -357,6 +390,63 @@
   el("view-list").classList.toggle("active", state.view==="list");
 
   function debounce(fn, ms){ var t; return function(){ clearTimeout(t); t=setTimeout(fn, ms); }; }
+
+  // ---- dark mode --------------------------------------------------------
+  try { state.dark = (localStorage.getItem("theme")==="dark"); } catch(e) {}
+  function applyTheme(){ document.body.classList.toggle("dark", !!state.dark); }
+  function toggleTheme(){ state.dark = !state.dark; try { localStorage.setItem("theme", state.dark?"dark":"light"); } catch(e) {} applyTheme(); }
+  el("theme").addEventListener("click", toggleTheme);
+  applyTheme();
+
+  // ---- command palette (⌘K) ---------------------------------------------
+  var palResults = [], palSel = 0;
+  function openPalette(){ el("palette").style.display="flex"; var i=el("palette-input"); i.value=""; el("palette-results").innerHTML=""; palResults=[]; palSel=0; i.focus(); }
+  function closePalette(){ el("palette").style.display="none"; }
+  function isPaletteOpen(){ return el("palette").style.display!=="none"; }
+  function renderPalette(){
+    var box = el("palette-results");
+    box.innerHTML = palResults.map(function(d,i){
+      return "<div class='pr"+(i===palSel?" sel":"")+"' data-i='"+i+"'><span class='pr-title'>"+esc(d.title||d.name)+"</span><span class='pr-meta'>"+esc(d.type)+(d.model?" · "+esc(d.model):"")+"</span></div>";
+    }).join("");
+    box.querySelectorAll(".pr").forEach(function(row){ row.onclick = function(){ gotoResult(parseInt(row.getAttribute("data-i"),10)); }; });
+  }
+  function palQuery(q){
+    fetch("/search?limit=8&q="+encodeURIComponent(q)).then(function(r){ return r.json(); }).then(function(data){
+      palResults = data.results || []; palSel = 0; renderPalette();
+    });
+  }
+  function gotoResult(i){ var d=palResults[i]; if(d) location.href = detailURLFor(d.name); }
+  el("palette-btn").addEventListener("click", openPalette);
+  el("palette").addEventListener("click", function(e){ if(e.target===el("palette")) closePalette(); });
+  el("palette-input").addEventListener("input", debounce(function(){ palQuery(el("palette-input").value.trim()); }, 150));
+  el("palette-input").addEventListener("keydown", function(e){
+    if(e.key==="ArrowDown"){ e.preventDefault(); palSel=Math.min(palSel+1, palResults.length-1); renderPalette(); }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); palSel=Math.max(palSel-1, 0); renderPalette(); }
+    else if(e.key==="Enter"){ e.preventDefault(); gotoResult(palSel); }
+    else if(e.key==="Escape"){ closePalette(); }
+  });
+
+  // ---- keyboard navigation ----------------------------------------------
+  var selIdx = -1;
+  function gridItems(){ return Array.prototype.slice.call(el("grid").children); }
+  function setSel(i){
+    var it = gridItems(); if(!it.length) return;
+    if(selIdx>=0 && it[selIdx]) it[selIdx].classList.remove("selected");
+    selIdx = Math.max(0, Math.min(i, it.length-1));
+    it[selIdx].classList.add("selected");
+    it[selIdx].scrollIntoView({block:"nearest"});
+  }
+  document.addEventListener("keydown", function(e){
+    if((e.key==="k"||e.key==="K") && (e.metaKey||e.ctrlKey)){ e.preventDefault(); openPalette(); return; }
+    var tag = (e.target.tagName||"").toLowerCase();
+    if(tag==="input"||tag==="select"||tag==="textarea"||isPaletteOpen()) return;
+    if(e.key==="/"){ e.preventDefault(); el("q").focus(); }
+    else if(e.key==="j"){ e.preventDefault(); setSel(selIdx+1); }
+    else if(e.key==="k"){ e.preventDefault(); setSel(selIdx<0?0:selIdx-1); }
+    else if(e.key==="d"){ toggleTheme(); }
+    else if(e.key==="o"||e.key==="Enter"){ var it=gridItems(); if(it[selIdx]){ var a=it[selIdx].querySelector("a"); if(a) location.href=a.href; } }
+    else if(e.key==="f"){ var it=gridItems(); if(it[selIdx]){ var s=it[selIdx].querySelector(".star"); if(s) s.click(); } }
+  });
 
   loadCollections();
   reload();
