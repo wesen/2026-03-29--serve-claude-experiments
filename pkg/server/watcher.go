@@ -12,9 +12,10 @@ import (
 
 // watcher monitors the artifacts directory and notifies connected SSE clients.
 type watcher struct {
-	dir     string
-	clients map[chan struct{}]struct{}
-	mu      sync.Mutex
+	dir      string
+	clients  map[chan struct{}]struct{}
+	mu       sync.Mutex
+	onChange func() // optional: invoked on each change, before clients are notified
 }
 
 func newWatcher(dir string) *watcher {
@@ -60,6 +61,9 @@ func (w *watcher) start(ctx context.Context) error {
 }
 
 func (w *watcher) broadcast() {
+	if w.onChange != nil {
+		w.onChange()
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for ch := range w.clients {

@@ -9,265 +9,187 @@
   body {
     font-family: 'Geneva', 'Helvetica Neue', Helvetica, sans-serif;
     font-size: 13px;
-    background: #aaa;
-    background-image: repeating-linear-gradient(0deg, transparent, transparent 1px, rgba(0,0,0,0.03) 1px, rgba(0,0,0,0.03) 2px);
+    background: #fff;
     min-height: 100vh;
-    padding: 30px;
   }
-  .window {
-    max-width: 800px;
-    margin: 0 auto;
-    border: 2px solid #000;
-    box-shadow: 4px 4px 0 #000;
-    background: #fff;
-  }
-  .titlebar {
-    height: 22px;
-    background: repeating-linear-gradient(180deg, #fff 0px, #fff 1px, #000 1px, #000 2px);
-    border-bottom: 2px solid #000;
-    display: flex;
-    align-items: center;
-    padding: 0 8px;
-    position: relative;
-  }
-  .titlebar .close-box {
-    width: 14px; height: 14px;
-    border: 2px solid #000;
-    background: #fff;
-    flex-shrink: 0;
-  }
-  .titlebar .title {
-    position: absolute;
-    left: 50%; transform: translateX(-50%);
-    background: #fff;
-    padding: 0 10px;
-    font-weight: bold;
-    font-size: 12px;
-    white-space: nowrap;
-  }
-  .content {
-    padding: 20px;
-  }
-  .content h1 {
-    font-size: 16px;
-    margin-bottom: 4px;
-  }
-  .content .subtitle {
-    color: #666;
-    margin-bottom: 16px;
-    font-size: 11px;
-  }
-  .search-panel {
-    border: 1px solid #000;
-    padding: 10px 12px;
-    margin-bottom: 16px;
-    background: #f5f5f5;
-  }
-  .search-label {
-    display: block;
-    font-size: 11px;
-    font-weight: bold;
-    margin-bottom: 6px;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-  }
+  .content { max-width: 1200px; margin: 0 auto; padding: 20px; }
+  .content h1 { font-size: 16px; margin-bottom: 2px; }
+  .subtitle { color: #666; margin-bottom: 12px; font-size: 11px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
   .search-input {
-    width: 100%;
-    border: 1px solid #000;
-    padding: 8px 10px;
-    font: inherit;
-    background: #fff;
+    flex: 1; min-width: 220px; font: inherit; padding: 6px 10px; border: 2px solid #000; background: #fff;
   }
-  .search-help {
-    margin-top: 6px;
-    color: #666;
-    font-size: 10px;
-  }
-  .artifact-list {
-    list-style: none;
-  }
-  .artifact-item {
-    border: 1px solid #000;
-    margin-bottom: 8px;
-    display: flex;
-    align-items: stretch;
-  }
-  .artifact-item:hover {
-    background: #f0f0f0;
-  }
-  .badge {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 50px;
-    font-size: 10px;
-    font-weight: bold;
-    letter-spacing: 0.5px;
-    border-right: 1px solid #000;
-    flex-shrink: 0;
-  }
-  .badge-html { background: #e8e8e8; }
-  .badge-jsx { background: #d0d0d0; }
-  .artifact-info {
-    padding: 8px 12px;
-    flex: 1;
-  }
-  .artifact-info a {
-    text-decoration: none;
-    color: #000;
-    font-weight: bold;
-    font-size: 13px;
-  }
-  .artifact-info a:hover {
-    text-decoration: underline;
-  }
-  .artifact-description {
-    margin-top: 6px;
-    color: #222;
-    font-size: 11px;
-    line-height: 1.35;
-  }
-  .artifact-meta {
-    font-size: 10px;
-    color: #666;
-    margin-top: 6px;
-  }
-  .artifact-tags {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    margin-top: 8px;
-  }
-  .tag {
-    border: 1px solid #000;
-    background: #efefef;
-    padding: 2px 6px;
-    font-size: 10px;
-  }
-  .artifact-links {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-top: 8px;
-    font-size: 10px;
-  }
-  .artifact-links a {
-    font-weight: normal;
-  }
-  .hidden {
-    display: none;
-  }
-  .no-results {
-    text-align: center;
-    color: #666;
-    padding: 20px;
-    border: 1px dashed #000;
-    margin-top: 12px;
-  }
-  .empty {
-    text-align: center;
-    color: #888;
-    padding: 40px 20px;
-  }
+  select { font: inherit; padding: 5px 6px; border: 2px solid #000; background: #fff; }
+  .count { font-size: 11px; color: #333; white-space: nowrap; }
+  .layout { display: grid; grid-template-columns: 200px 1fr; gap: 18px; }
+  @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
+  .facets { border-right: 1px dashed #999; padding-right: 14px; }
+  .facet-group { margin-bottom: 14px; }
+  .facet-group h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 2px solid #000; margin-bottom: 5px; padding-bottom: 2px; }
+  .facet-val { display: flex; justify-content: space-between; gap: 6px; cursor: pointer; padding: 2px 3px; font-size: 12px; }
+  .facet-val:hover { background: #000; color: #fff; }
+  .facet-val.active { background: #000; color: #fff; }
+  .facet-val .fcount { color: #888; }
+  .facet-val.active .fcount { color: #ccc; }
+  .clear { font-size: 11px; cursor: pointer; text-decoration: underline; color: #333; margin-bottom: 8px; display: inline-block; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .card { border: 2px solid #000; box-shadow: 2px 2px 0 #000; background: #fff; padding: 10px; display: flex; flex-direction: column; gap: 5px; }
+  .card a.card-title { font-weight: bold; font-size: 13px; text-decoration: none; color: #000; }
+  .card a.card-title:hover { text-decoration: underline; }
+  .badges { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+  .badge { font-size: 10px; border: 1px solid #000; padding: 0 4px; text-transform: uppercase; }
+  .badge.jsx { background: #dbeafe; } .badge.html { background: #dcfce7; }
+  .badge.warn { background: #fee2e2; border-color: #b91c1c; color: #b91c1c; }
+  .meta { font-size: 11px; color: #555; }
+  .tags { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tag { font-size: 10px; background: #eee; border: 1px solid #999; padding: 0 4px; cursor: pointer; }
+  .tag:hover { background: #000; color: #fff; }
+  .links { display: flex; gap: 8px; font-size: 10px; margin-top: 2px; }
+  .links a { color: #333; }
+  .more { margin: 16px auto 0; display: block; font: inherit; padding: 6px 16px; border: 2px solid #000; background: #fff; box-shadow: 2px 2px 0 #000; cursor: pointer; }
+  .empty { padding: 30px; text-align: center; color: #666; }
 </style>
 </head>
 <body>
-  <div class="window">
-    <div class="titlebar">
-      <div class="close-box"></div>
-      <div class="title">Artifact Server</div>
-    </div>
-    <div class="content">
-      <h1>Claude Artifacts</h1>
-      <div class="subtitle">Serving from: {{.Dir}} &middot; {{len .Artifacts}} artifact{{if ne (len .Artifacts) 1}}s{{end}}</div>
-      <div class="search-panel">
-        <label class="search-label" for="artifact-filter">Filter Artifacts</label>
-        <input id="artifact-filter" class="search-input" type="text" list="artifact-suggestions" placeholder="Search by title, description, tag, filename, or date" autocomplete="off" />
-        <datalist id="artifact-suggestions"></datalist>
-        <div class="search-help">First pass only: type to filter locally in the browser. A richer search UX can layer on top of the same search bundle later.</div>
+  <div class="content">
+      <h1>Artifacts</h1>
+      <div class="subtitle">Serving from <code>{{.Dir}}</code> — {{.Count}} artifacts</div>
+
+      <div class="toolbar">
+        <input id="q" class="search-input" type="text" placeholder="Search title, description, tags, source, transcript…" autocomplete="off" />
+        <select id="sort">
+          <option value="recent">Recent</option>
+          <option value="title">Title A–Z</option>
+          <option value="size">Largest</option>
+          <option value="-size">Smallest</option>
+          <option value="name">Path</option>
+        </select>
+        <span id="count" class="count"></span>
       </div>
-      {{if .Artifacts}}
-      <ul class="artifact-list">
-        {{range .Artifacts}}
-        <li class="artifact-item" data-artifact-name="{{.Name}}">
-          <div class="badge badge-{{.Type}}">{{.Type}}</div>
-          <div class="artifact-info">
-            <a href="/view/{{.Name}}">{{.Title}}</a>
-            {{if .Description}}<div class="artifact-description">{{.Description}}</div>{{end}}
-            <div class="artifact-meta">{{.Filename}}{{if .OriginalDate}} &middot; created {{.OriginalDate}}{{end}} &middot; {{.Size | humanSize}} &middot; {{.ModifiedAt.Format "2006-01-02 15:04"}}</div>
-            {{if .Tags}}
-            <div class="artifact-tags">
-              {{range .Tags}}<span class="tag">{{.}}</span>{{end}}
-            </div>
-            {{end}}
-            {{if .Links}}
-            <div class="artifact-links">
-              {{range .Links}}<a href="{{.URL}}" target="_blank" rel="noreferrer">{{.Label}}</a>{{end}}
-            </div>
-            {{end}}
-          </div>
-        </li>
-        {{end}}
-      </ul>
-      <div id="no-results" class="no-results hidden">No artifacts match the current filter.</div>
-      {{else}}
-      <div class="empty">No artifacts found. Drop .html or .jsx files into the directory.</div>
-      {{end}}
-    </div>
+
+      <div class="layout">
+        <aside class="facets">
+          <span id="clear" class="clear" style="display:none">✕ clear filters</span>
+          <div id="facets"></div>
+        </aside>
+        <main>
+          <div id="grid" class="grid"></div>
+          <button id="more" class="more" style="display:none">Load more</button>
+          <div id="empty" class="empty" style="display:none">No artifacts match.</div>
+        </main>
+      </div>
   </div>
-  <script>
-  (function() {
-    const input = document.getElementById("artifact-filter");
-    const suggestions = document.getElementById("artifact-suggestions");
-    const noResults = document.getElementById("no-results");
-    if (!input || !suggestions || !noResults) return;
 
-    const items = Array.from(document.querySelectorAll(".artifact-item"));
-    const itemMap = new Map(items.map((item) => [item.dataset.artifactName, item]));
+<script>
+(function(){
+  var PAGE = 60;
+  var state = { q: "", sort: "recent", type: "", project: "", model: "", library: "", warnings: false, tags: [], offset: 0 };
+  var lastTotal = 0;
 
-    fetch("/search-index.json")
-      .then((res) => {
-        if (!res.ok) throw new Error("search bundle request failed");
-        return res.json();
-      })
-      .then((docs) => {
-        const suggestionValues = new Set();
-        for (const doc of docs) {
-          if (doc.title) suggestionValues.add(doc.title);
-          if (doc.filename) suggestionValues.add(doc.filename);
-          if (Array.isArray(doc.tags)) {
-            for (const tag of doc.tags) suggestionValues.add(tag);
-          }
-        }
-        for (const value of Array.from(suggestionValues).sort((a, b) => a.localeCompare(b))) {
-          const option = document.createElement("option");
-          option.value = value;
-          suggestions.appendChild(option);
-        }
+  var el = function(id){ return document.getElementById(id); };
+  var esc = function(s){ var d=document.createElement("div"); d.textContent = s==null?"":s; return d.innerHTML; };
 
-        const applyFilter = () => {
-          const query = input.value.trim().toLowerCase();
-          let visible = 0;
-          for (const doc of docs) {
-            const item = itemMap.get(doc.name);
-            if (!item) continue;
-            const match = query === "" || (doc.search_text || "").includes(query);
-            item.classList.toggle("hidden", !match);
-            if (match) visible += 1;
-          }
-          noResults.classList.toggle("hidden", visible !== 0 || query === "");
-        };
+  function facetLabel(dim, val){ return val; }
+  var FACET_ORDER = [["type","Type"],["project","Project"],["model","Model"],["tag","Tag"],["library","Library"]];
 
-        input.addEventListener("input", applyFilter);
-        applyFilter();
-      })
-      .catch(() => {
-        // Keep the page functional even if the search bundle fails.
+  function render(data){
+    lastTotal = data.total;
+    el("count").textContent = data.total + (data.total===1?" result":" results");
+    // facets
+    var fx = el("facets"); fx.innerHTML = "";
+    FACET_ORDER.forEach(function(pair){
+      var dim = pair[0], label = pair[1];
+      var counts = data.facets[dim] || {};
+      var keys = Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a] || a.localeCompare(b); });
+      if (keys.length === 0) return;
+      var g = document.createElement("div"); g.className = "facet-group";
+      g.innerHTML = "<h3>"+esc(label)+"</h3>";
+      keys.slice(0, 12).forEach(function(v){
+        var active = (dim==="tag") ? state.tags.indexOf(v)>=0 : state[dim]===v;
+        var row = document.createElement("div");
+        row.className = "facet-val" + (active?" active":"");
+        row.innerHTML = "<span>"+esc(facetLabel(dim,v))+"</span><span class='fcount'>"+counts[v]+"</span>";
+        row.onclick = function(){ toggleFacet(dim, v); };
+        g.appendChild(row);
       });
-  })();
-  </script>
-  {{if .Watch}}<script>
+      fx.appendChild(g);
+    });
+    el("clear").style.display = anyFilter() ? "inline-block" : "none";
+    // warnings toggle
+    var wg = document.createElement("div"); wg.className = "facet-group";
+    wg.innerHTML = "<h3>Flags</h3>";
+    var wrow = document.createElement("div");
+    wrow.className = "facet-val" + (state.warnings?" active":"");
+    wrow.innerHTML = "<span>has warnings</span>";
+    wrow.onclick = function(){ state.warnings = !state.warnings; reload(); };
+    wg.appendChild(wrow); fx.appendChild(wg);
+  }
+
+  function renderCards(results, append){
+    var grid = el("grid");
+    if (!append) grid.innerHTML = "";
+    el("empty").style.display = (results.length===0 && !append && lastTotal===0) ? "block" : "none";
+    results.forEach(function(d){
+      var c = document.createElement("div"); c.className = "card";
+      var badges = "<span class='badge "+esc(d.type)+"'>"+esc(d.type)+"</span>";
+      if (d.warnings_count>0) badges += "<span class='badge warn' title='reconstruction warnings'>⚠ "+d.warnings_count+"</span>";
+      if (d.model) badges += "<span class='meta'>"+esc(d.model)+"</span>";
+      var tags = (d.tags||[]).map(function(t){ return "<span class='tag' data-tag='"+esc(t)+"'>"+esc(t)+"</span>"; }).join("");
+      var links = "<a href='"+esc(d.view_url)+"'>view</a>";
+      if (d.source_uuid) links += " <a href='https://claude.ai/chat/"+esc(d.source_uuid)+"' target='_blank'>claude.ai</a>";
+      c.innerHTML =
+        "<div class='badges'>"+badges+"</div>" +
+        "<a class='card-title' href='"+esc(d.view_url)+"'>"+esc(d.title||d.name)+"</a>" +
+        (d.description?"<div class='meta'>"+esc(d.description)+"</div>":"") +
+        (d.updated_at?"<div class='meta'>"+esc(d.updated_at.slice(0,10))+"</div>":"") +
+        (tags?"<div class='tags'>"+tags+"</div>":"") +
+        "<div class='links'>"+links+"</div>";
+      c.querySelectorAll(".tag").forEach(function(tn){ tn.onclick = function(e){ e.preventDefault(); toggleFacet("tag", tn.getAttribute("data-tag")); }; });
+      grid.appendChild(c);
+    });
+    el("more").style.display = (state.offset + PAGE < lastTotal) ? "block" : "none";
+  }
+
+  function anyFilter(){ return state.type||state.project||state.model||state.library||state.warnings||state.tags.length>0; }
+
+  function toggleFacet(dim, val){
+    if (dim === "tag"){ var i = state.tags.indexOf(val); if (i>=0) state.tags.splice(i,1); else state.tags.push(val); }
+    else { state[dim] = (state[dim]===val) ? "" : val; }
+    reload();
+  }
+
+  function qs(){
+    var p = new URLSearchParams();
+    if (state.q) p.set("q", state.q);
+    if (state.sort) p.set("sort", state.sort);
+    ["type","project","model","library"].forEach(function(k){ if(state[k]) p.set(k, state[k]); });
+    if (state.warnings) p.set("warnings","true");
+    state.tags.forEach(function(t){ p.append("tag", t); });
+    p.set("limit", PAGE); p.set("offset", state.offset);
+    return p.toString();
+  }
+
+  function fetchPage(append){
+    fetch("/search?"+qs()).then(function(r){ return r.json(); }).then(function(data){
+      render(data);
+      renderCards(data.results, append);
+    });
+  }
+
+  function reload(){ state.offset = 0; fetchPage(false); }
+
+  el("q").addEventListener("input", debounce(function(){ state.q = el("q").value.trim(); reload(); }, 180));
+  el("sort").addEventListener("change", function(){ state.sort = el("sort").value; reload(); });
+  el("more").addEventListener("click", function(){ state.offset += PAGE; fetchPage(true); });
+  el("clear").addEventListener("click", function(){ state.type=state.project=state.model=state.library=""; state.tags=[]; state.warnings=false; reload(); });
+
+  function debounce(fn, ms){ var t; return function(){ clearTimeout(t); t=setTimeout(fn, ms); }; }
+
+  reload();
+})();
+</script>
+{{if .Watch}}<script>
 (function(){var es=new EventSource("/events");es.onmessage=function(e){if(e.data==="reload")location.reload()};es.onerror=function(){setTimeout(function(){location.reload()},2000)};})();
-  </script>{{end}}
+</script>{{end}}
 </body>
 </html>

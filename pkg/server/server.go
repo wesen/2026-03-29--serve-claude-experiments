@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ var templateFS embed.FS
 // Server serves Claude artifacts over HTTP.
 type Server struct {
 	scanner         *artifacts.Scanner
+	index           *searchIndex
 	dir             string
 	port            int
 	watch           bool
@@ -78,6 +80,7 @@ func New(cfg Config) (*Server, error) {
 
 	return &Server{
 		scanner:         scanner,
+		index:           newSearchIndex(scanner),
 		dir:             cfg.Dir,
 		port:            cfg.Port,
 		watch:           cfg.Watch,
@@ -95,9 +98,16 @@ const reloadScript = `<script>
 
 // Run starts the HTTP server and blocks until the context is cancelled.
 func (s *Server) Run(ctx context.Context) error {
+	// Build the search index up front so /search and the index page read from
+	// memory instead of re-scanning the tree on every request.
+	if err := s.index.rebuild(); err != nil {
+		return fmt.Errorf("building search index: %w", err)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /search-index.json", s.handleSearchIndex)
+	mux.HandleFunc("GET /search", s.handleSearch)
 	// {name...} matches multi-segment names so artifacts in nested subdirectories
 	// (e.g. "<uuid>/artifacts/Calendar") resolve.
 	mux.HandleFunc("GET /view/{name...}", s.handleView)
@@ -106,6 +116,12 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /jsx/{name...}", s.handleJSX)
 
 	if s.watch && s.watcher != nil {
+		// Rebuild the index whenever the directory changes, before clients reload.
+		s.watcher.onChange = func() {
+			if err := s.index.rebuild(); err != nil {
+				log.Printf("index rebuild error: %v", err)
+			}
+		}
 		mux.HandleFunc("GET /events", s.watcher.handleSSE)
 		go func() {
 			if err := s.watcher.start(ctx); err != nil {
@@ -135,32 +151,55 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	arts, err := s.scanner.Scan()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
+	arts := s.index.artifactList()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	s.indexTemplate.Execute(w, map[string]interface{}{
 		"Artifacts": arts,
+		"Count":     len(arts),
 		"Dir":       s.dir,
 		"Watch":     s.watch,
 	})
 }
 
 func (s *Server) handleSearchIndex(w http.ResponseWriter, r *http.Request) {
-	arts, err := s.scanner.Scan()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(buildSearchDocuments(arts)); err != nil {
+	if err := json.NewEncoder(w).Encode(buildSearchDocuments(s.index.artifactList())); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+// handleSearch runs a query against the cached index and returns
+// {total, results, facets}. All query parameters are optional.
+func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	query := searchQuery{
+		Q:        q.Get("q"),
+		Type:     q.Get("type"),
+		Project:  q.Get("project"),
+		Model:    q.Get("model"),
+		Tags:     q["tag"],
+		Library:  q.Get("library"),
+		Warnings: q.Get("warnings") == "true",
+		Sort:     q.Get("sort"),
+		Limit:    atoiDefault(q.Get("limit"), 60),
+		Offset:   atoiDefault(q.Get("offset"), 0),
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err := json.NewEncoder(w).Encode(s.index.search(query)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func atoiDefault(s string, def int) int {
+	if s == "" {
+		return def
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return def
+	}
+	return n
 }
 
 func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {

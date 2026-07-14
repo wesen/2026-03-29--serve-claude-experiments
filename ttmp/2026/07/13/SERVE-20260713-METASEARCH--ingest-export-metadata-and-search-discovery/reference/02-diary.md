@@ -41,3 +41,45 @@ can group by uuid, and the export currently has null projects anyway).
 
 Next: Feature 2 — cached in-memory index + `/search` endpoint (full-text over
 source/transcript, facets, sort) + rebuilt UI.
+
+## 2026-07-13 — Feature 2: search & discovery (done)
+
+- New `pkg/server/index.go`: cached in-memory `searchIndex` (RWMutex). `rebuild()`
+  scans + reads each artifact's source and transcript into a lowercased haystack,
+  and extracts third-party libraries from bare imports. Built at Run() start;
+  rebuilt on watcher change (added `onChange` hook to the watcher, invoked in
+  `broadcast()`).
+- `search(query)` supports free-text (AND over whitespace terms, over
+  metadata+source+transcript), filters (type/project/model/tag/library/warnings),
+  sort (recent/title/size/-size/name), and paging. Facets are counted per
+  dimension against the results filtered by all OTHER dimensions, so selecting one
+  value doesn't zero out its siblings.
+- `GET /search` endpoint returns `{total, results, facets}`. `handleIndex` and
+  `/search-index.json` now read the cached index (no per-request scan).
+- Rewrote `templates/index.html` into a search-driven UI (retro chrome kept):
+  debounced search box, sort dropdown, facet sidebar with counts + active state,
+  result count, clickable tag chips, warning badges, view/claude.ai links, and a
+  "Load more" pager.
+- Tests (`index_test.go`): extractLibraries (+scoped roots), text/type/library/
+  warnings/tag filters, and facet-excludes-own-dimension. All green.
+- Live against `~/Downloads/claude-downloads` (21 artifacts): `/search` returns
+  correct totals + facets (type/model/library); `q=recharts` matches the artifact
+  that imports recharts (full-text over SOURCE works); browser UI renders 21 cards
+  + facet sidebar, search "calendar"→2, click html facet→3. Zero console errors
+  (besides favicon).
+
+Scaling note: the index holds every artifact's lowercased source (and transcript)
+in memory — fine for thousands at tens of MB, but the SQLite/FTS foundation
+(improvements-for-scale §0) remains the path for very large libraries. Also the
+fsnotify watcher only watches the top-level dir (pre-existing), so nested export
+changes won't trigger a rebuild until that is made recursive.
+
+Both tasks complete. Full suite green; verified live.
+
+## 2026-07-13 — UI: remove window chrome (per request)
+
+- Removed the retro "classic Mac" window chrome from `index.html`: dropped the
+  `.window`/`.titlebar`/`.close-box` CSS and the gray desktop background; the page
+  is now a plain white, centered `.content` container. Cards/facets/badges kept.
+- Rebuilt, verified live: no `.window`/`.titlebar` in the DOM, white body
+  background, 21 cards + facets still render and filter correctly.

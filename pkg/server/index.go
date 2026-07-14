@@ -1,0 +1,275 @@
+package server
+
+import (
+	"os"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/go-go-golems/serve-artifacts/pkg/artifacts"
+)
+
+// indexEntry is one artifact plus the derived data search needs: its lowercased
+// full-text haystack (metadata + source + transcript), the third-party libraries
+// it imports, and a timestamp for "recent" sorting.
+type indexEntry struct {
+	art       artifacts.Artifact
+	libraries []string
+	haystack  string
+	sortTime  int64
+}
+
+// searchIndex is a cached, in-memory index rebuilt on demand (startup + file
+// watch). Reads take an RLock; a rebuild swaps the slice under a Lock.
+type searchIndex struct {
+	mu      sync.RWMutex
+	scanner *artifacts.Scanner
+	entries []indexEntry
+}
+
+func newSearchIndex(sc *artifacts.Scanner) *searchIndex { return &searchIndex{scanner: sc} }
+
+// rebuild re-scans the directory and reads each artifact's source (and transcript)
+// to populate the full-text haystack and library facet. Transcript files are read
+// once per conversation.
+func (ix *searchIndex) rebuild() error {
+	arts, err := ix.scanner.Scan()
+	if err != nil {
+		return err
+	}
+	transcriptCache := map[string]string{}
+	entries := make([]indexEntry, 0, len(arts))
+	for _, a := range arts {
+		body := ""
+		if b, err := os.ReadFile(a.Path); err == nil {
+			body = string(b)
+		}
+		transcript := ""
+		if a.TranscriptPath != "" {
+			if t, ok := transcriptCache[a.TranscriptPath]; ok {
+				transcript = t
+			} else if b, err := os.ReadFile(a.TranscriptPath); err == nil {
+				transcript = string(b)
+				transcriptCache[a.TranscriptPath] = transcript
+			}
+		}
+		parts := []string{a.Name, a.Title, a.Description, a.Filename, a.Type,
+			a.Project, a.Model, a.SourceConversationTitle, a.OriginalDate}
+		parts = append(parts, a.Tags...)
+		parts = append(parts, body, transcript)
+		entries = append(entries, indexEntry{
+			art:       a,
+			libraries: extractLibraries(body),
+			haystack:  strings.ToLower(strings.Join(parts, "\n")),
+			sortTime:  entrySortTime(a),
+		})
+	}
+	ix.mu.Lock()
+	ix.entries = entries
+	ix.mu.Unlock()
+	return nil
+}
+
+// artifacts returns a snapshot of the indexed artifacts (for the index page and
+// the legacy /search-index.json), avoiding a per-request rescan.
+func (ix *searchIndex) artifactList() []artifacts.Artifact {
+	ix.mu.RLock()
+	defer ix.mu.RUnlock()
+	out := make([]artifacts.Artifact, len(ix.entries))
+	for i, e := range ix.entries {
+		out[i] = e.art
+	}
+	return out
+}
+
+type searchQuery struct {
+	Q        string
+	Type     string
+	Project  string
+	Model    string
+	Tags     []string
+	Library  string
+	Warnings bool
+	Sort     string
+	Limit    int
+	Offset   int
+}
+
+type searchResult struct {
+	Total   int                       `json:"total"`
+	Results []SearchDocument          `json:"results"`
+	Facets  map[string]map[string]int `json:"facets"`
+}
+
+const facetNone = "(none)"
+
+func projectFacet(a artifacts.Artifact) string {
+	if strings.TrimSpace(a.Project) == "" {
+		return facetNone
+	}
+	return a.Project
+}
+
+// matches reports whether an entry passes the query. `skip` names a facet
+// dimension to ignore, used when counting that facet (so selecting one value of a
+// facet does not zero out its siblings).
+func (e indexEntry) matches(q searchQuery, skip string) bool {
+	a := e.art
+	if skip != "type" && q.Type != "" && a.Type != q.Type {
+		return false
+	}
+	if skip != "project" && q.Project != "" && projectFacet(a) != q.Project {
+		return false
+	}
+	if skip != "model" && q.Model != "" && a.Model != q.Model {
+		return false
+	}
+	if skip != "tag" {
+		for _, want := range q.Tags {
+			if !containsFold(a.Tags, want) {
+				return false
+			}
+		}
+	}
+	if skip != "library" && q.Library != "" && !containsFold(e.libraries, q.Library) {
+		return false
+	}
+	if skip != "warnings" && q.Warnings && len(a.Warnings) == 0 {
+		return false
+	}
+	if q.Q != "" {
+		for _, term := range strings.Fields(strings.ToLower(q.Q)) {
+			if !strings.Contains(e.haystack, term) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (ix *searchIndex) search(q searchQuery) searchResult {
+	ix.mu.RLock()
+	defer ix.mu.RUnlock()
+
+	matched := make([]indexEntry, 0)
+	for _, e := range ix.entries {
+		if e.matches(q, "") {
+			matched = append(matched, e)
+		}
+	}
+	sortEntries(matched, q.Sort)
+	total := len(matched)
+
+	facets := map[string]map[string]int{
+		"type": {}, "project": {}, "model": {}, "library": {}, "tag": {},
+	}
+	for _, e := range ix.entries {
+		if e.matches(q, "type") {
+			facets["type"][e.art.Type]++
+		}
+		if e.matches(q, "project") {
+			facets["project"][projectFacet(e.art)]++
+		}
+		if e.matches(q, "model") && e.art.Model != "" {
+			facets["model"][e.art.Model]++
+		}
+		if e.matches(q, "library") {
+			for _, l := range e.libraries {
+				facets["library"][l]++
+			}
+		}
+		if e.matches(q, "tag") {
+			for _, t := range e.art.Tags {
+				facets["tag"][t]++
+			}
+		}
+	}
+
+	// page
+	lo := q.Offset
+	if lo < 0 || lo > len(matched) {
+		lo = len(matched)
+	}
+	hi := len(matched)
+	if q.Limit > 0 && lo+q.Limit < hi {
+		hi = lo + q.Limit
+	}
+	pageArts := make([]artifacts.Artifact, 0, hi-lo)
+	for _, e := range matched[lo:hi] {
+		pageArts = append(pageArts, e.art)
+	}
+	return searchResult{Total: total, Results: buildSearchDocuments(pageArts), Facets: facets}
+}
+
+func sortEntries(entries []indexEntry, mode string) {
+	switch mode {
+	case "title":
+		sort.SliceStable(entries, func(i, j int) bool {
+			return strings.ToLower(entries[i].art.Title) < strings.ToLower(entries[j].art.Title)
+		})
+	case "size":
+		sort.SliceStable(entries, func(i, j int) bool { return entries[i].art.Size > entries[j].art.Size })
+	case "-size":
+		sort.SliceStable(entries, func(i, j int) bool { return entries[i].art.Size < entries[j].art.Size })
+	case "name":
+		sort.SliceStable(entries, func(i, j int) bool { return entries[i].art.Name < entries[j].art.Name })
+	default: // "recent"
+		sort.SliceStable(entries, func(i, j int) bool {
+			if entries[i].sortTime != entries[j].sortTime {
+				return entries[i].sortTime > entries[j].sortTime
+			}
+			return strings.ToLower(entries[i].art.Title) < strings.ToLower(entries[j].art.Title)
+		})
+	}
+}
+
+func entrySortTime(a artifacts.Artifact) int64 {
+	for _, ts := range []string{a.ConversationUpdatedAt, a.ConversationCreatedAt} {
+		if t, err := time.Parse(time.RFC3339, ts); err == nil {
+			return t.Unix()
+		}
+	}
+	return a.ModifiedAt.Unix()
+}
+
+var bareImportRe = regexp.MustCompile(`(?m)from\s+['"]([^./][^'"]*)['"]`)
+
+// extractLibraries returns the distinct third-party module specifiers a source
+// imports (bare, non-relative, not react/react-dom). Roots like "recharts" and
+// "@scope/pkg" are kept; deep paths ("d3/foo") are reduced to their package root.
+func extractLibraries(source string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, m := range bareImportRe.FindAllStringSubmatch(source, -1) {
+		spec := m[1]
+		root := packageRoot(spec)
+		if root == "" || root == "react" || root == "react-dom" {
+			continue
+		}
+		if !seen[root] {
+			seen[root] = true
+			out = append(out, root)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func packageRoot(spec string) string {
+	parts := strings.Split(spec, "/")
+	if strings.HasPrefix(spec, "@") && len(parts) >= 2 {
+		return parts[0] + "/" + parts[1]
+	}
+	return parts[0]
+}
+
+func containsFold(list []string, want string) bool {
+	for _, x := range list {
+		if strings.EqualFold(x, want) {
+			return true
+		}
+	}
+	return false
+}
