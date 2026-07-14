@@ -83,7 +83,7 @@
           <h3>Thumbnail</h3>
           <img id="thumbprev" class="thumbprev" alt="thumbnail">
           <div class="thumbctl">
-            <button id="capture" class="sbtn" title="Capture the current view as the thumbnail (c)">📸 capture view</button>
+            <button id="capture" class="sbtn" title="Capture the current view as the thumbnail (Ctrl/Cmd+Shift+C)">📸 capture view</button>
             <button id="rerender" class="sbtn" title="Re-render a fresh server-side screenshot">↻ re-render</button>
           </div>
           <div id="thumbmsg" class="muted" style="font-size:10px;margin-top:4px"></div>
@@ -265,10 +265,12 @@
   function toggleTheater(){ document.body.classList.toggle("theater"); el("theater").classList.toggle("on", document.body.classList.contains("theater")); }
   el("theater").onclick = toggleTheater;
   document.addEventListener("keydown", function(e){
+    // Capture uses a modifier combo (Ctrl/Cmd+Shift+C) so it never collides with
+    // artifacts that read plain keystrokes.
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "C" || e.key === "c")){ e.preventDefault(); setThumbFromView(); return; }
     var tag = (e.target.tagName||"").toLowerCase();
     if (tag==="input"||tag==="textarea"||tag==="select") return;
     if (e.key==="t"){ toggleTheater(); }
-    else if (e.key==="c"){ setThumbFromView(); }
     else if (e.key==="Escape" && document.body.classList.contains("theater")){ toggleTheater(); }
   });
 
