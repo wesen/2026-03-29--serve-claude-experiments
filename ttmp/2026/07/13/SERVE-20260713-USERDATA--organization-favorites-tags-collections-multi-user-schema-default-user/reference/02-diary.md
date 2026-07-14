@@ -220,3 +220,51 @@ drives the tag facet and filter.
 ### Technical details
 - `POST /api/tags/add|remove?key=&tag=` → `{key, tags:[user tags]}`.
 - Results: `user_tags` (the user's) and `tags` (manifest ∪ user, deduped).
+
+## Step 5: Collections / playlists (task 4)
+
+Added per-user, ordered collections: the API over the store methods built in task
+1, folded into the `collection=<id>` search filter wired in task 2, plus a
+Collections sidebar and per-card add/remove controls. This completes the ticket.
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 1)
+
+**Assistant interpretation:** Implement collections (task 4): create/list/delete/add/remove endpoints, a `collection` filter, and a collections UI.
+
+**Inferred user intent:** Group artifacts into named playlists and browse them.
+
+**Commit (code):** c256734 — "feat: collections/playlists (SERVE-20260713-USERDATA task 4)"
+
+### What I did
+- `pkg/server/server.go`: `GET/POST /api/collections`, `DELETE /api/collections/{id}`, `POST/DELETE /api/collections/{id}/items` (add/remove) with `pathID` + `currentUser`.
+- `templates/index.html`: Collections sidebar (fetch `/api/collections`, name+count rows that set `state.collection` and reload, "＋ new collection" input, "✕ show all"); per card an "＋ collection…" select (add) and a "− remove" link when a collection is active; `state.collection` folded into `qs`/`anyFilter`/`clear`.
+
+### Why
+- Collections are the ordered, curated complement to search/favorites/tags; they need mutable ordered membership, which the store already models.
+
+### What worked
+- API: create → add ×2 (count 2) → `/search?collection=1` returns 2 → remove one → returns 1.
+- UI: sidebar shows "Best UIs 1"; add-select present on cards; clicking a collection filters to its items; filtered cards show "− remove".
+- `go test ./...` green. Screenshot: `artifact-organization-ui.png`.
+
+### What didn't work
+- N/A.
+
+### What was tricky to build
+- The DELETE-item endpoint. `r.FormValue` does not parse a request body for DELETE, only POST/PUT/PATCH, so a form-body `key` would be empty. Solution: the remove-item handler reads `key` from the URL query, and the UI sends it as a query param on the DELETE.
+
+### What warrants a second pair of eyes
+- Reorder is implemented in the store and tested, but there is no drag-to-reorder UI yet (collections render in insertion order). Confirm that's acceptable for now.
+
+### What should be done in the future
+- Drag-to-reorder in the collection view; a shareable/static-export of a collection.
+
+### Code review instructions
+- `server.go` collection handlers + routes; template `renderCollectionsSidebar`, `addToCollection`, `removeFromCollection`.
+- Validate: create/add/list/filter/remove via curl (see Step technical details); browser: sidebar filter + add-select + remove.
+
+### Technical details
+- `GET /api/collections` → `[{id,name,count}]`; `POST /api/collections` (name) → `{id,name}`; `DELETE /api/collections/{id}`; `POST /api/collections/{id}/items` (key); `DELETE /api/collections/{id}/items?key=`.
+- `/search?collection=<id>` filters to the collection's item set (loaded into `userView.collectionKeys`).
