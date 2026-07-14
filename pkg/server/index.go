@@ -85,16 +85,26 @@ func (ix *searchIndex) artifactList() []artifacts.Artifact {
 }
 
 type searchQuery struct {
-	Q        string
-	Type     string
-	Project  string
-	Model    string
-	Tags     []string
-	Library  string
-	Warnings bool
-	Sort     string
-	Limit    int
-	Offset   int
+	Q          string
+	Type       string
+	Project    string
+	Model      string
+	Tags       []string
+	Library    string
+	Warnings   bool
+	Favorite   bool  // only favorites of the acting user
+	Collection int64 // only artifacts in this collection (0 = no filter)
+	Sort       string
+	Limit      int
+	Offset     int
+}
+
+// userView carries the acting user's per-request organization state so the shared,
+// user-agnostic index can enrich and filter results without storing user data.
+type userView struct {
+	favorites      map[string]bool     // favorited artifact keys
+	tags           map[string][]string // artifact key -> user tags
+	collectionKeys map[string]bool     // keys in the collection being filtered (nil = no filter)
 }
 
 type searchResult struct {
@@ -115,7 +125,19 @@ func projectFacet(a artifacts.Artifact) string {
 // matches reports whether an entry passes the query. `skip` names a facet
 // dimension to ignore, used when counting that facet (so selecting one value of a
 // facet does not zero out its siblings).
-func (e indexEntry) matches(q searchQuery, skip string) bool {
+// mergedTags returns the artifact's manifest tags plus the user's tags (deduped),
+// which is both what the tag facet counts and what a tag filter matches against.
+func (e indexEntry) mergedTags(uv userView) []string {
+	out := append([]string(nil), e.art.Tags...)
+	for _, t := range uv.tags[e.art.Name] {
+		if !containsFold(out, t) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func (e indexEntry) matches(q searchQuery, uv userView, skip string) bool {
 	a := e.art
 	if skip != "type" && q.Type != "" && a.Type != q.Type {
 		return false
@@ -127,8 +149,9 @@ func (e indexEntry) matches(q searchQuery, skip string) bool {
 		return false
 	}
 	if skip != "tag" {
+		merged := e.mergedTags(uv)
 		for _, want := range q.Tags {
-			if !containsFold(a.Tags, want) {
+			if !containsFold(merged, want) {
 				return false
 			}
 		}
@@ -137,6 +160,12 @@ func (e indexEntry) matches(q searchQuery, skip string) bool {
 		return false
 	}
 	if skip != "warnings" && q.Warnings && len(a.Warnings) == 0 {
+		return false
+	}
+	if skip != "favorite" && q.Favorite && !uv.favorites[a.Name] {
+		return false
+	}
+	if skip != "collection" && q.Collection != 0 && !uv.collectionKeys[a.Name] {
 		return false
 	}
 	if q.Q != "" {
@@ -149,13 +178,13 @@ func (e indexEntry) matches(q searchQuery, skip string) bool {
 	return true
 }
 
-func (ix *searchIndex) search(q searchQuery) searchResult {
+func (ix *searchIndex) search(q searchQuery, uv userView) searchResult {
 	ix.mu.RLock()
 	defer ix.mu.RUnlock()
 
 	matched := make([]indexEntry, 0)
 	for _, e := range ix.entries {
-		if e.matches(q, "") {
+		if e.matches(q, uv, "") {
 			matched = append(matched, e)
 		}
 	}
@@ -163,27 +192,30 @@ func (ix *searchIndex) search(q searchQuery) searchResult {
 	total := len(matched)
 
 	facets := map[string]map[string]int{
-		"type": {}, "project": {}, "model": {}, "library": {}, "tag": {},
+		"type": {}, "project": {}, "model": {}, "library": {}, "tag": {}, "favorite": {},
 	}
 	for _, e := range ix.entries {
-		if e.matches(q, "type") {
+		if e.matches(q, uv, "type") {
 			facets["type"][e.art.Type]++
 		}
-		if e.matches(q, "project") {
+		if e.matches(q, uv, "project") {
 			facets["project"][projectFacet(e.art)]++
 		}
-		if e.matches(q, "model") && e.art.Model != "" {
+		if e.matches(q, uv, "model") && e.art.Model != "" {
 			facets["model"][e.art.Model]++
 		}
-		if e.matches(q, "library") {
+		if e.matches(q, uv, "library") {
 			for _, l := range e.libraries {
 				facets["library"][l]++
 			}
 		}
-		if e.matches(q, "tag") {
-			for _, t := range e.art.Tags {
+		if e.matches(q, uv, "tag") {
+			for _, t := range e.mergedTags(uv) {
 				facets["tag"][t]++
 			}
+		}
+		if e.matches(q, uv, "favorite") && uv.favorites[e.art.Name] {
+			facets["favorite"]["true"]++
 		}
 	}
 
@@ -196,11 +228,14 @@ func (ix *searchIndex) search(q searchQuery) searchResult {
 	if q.Limit > 0 && lo+q.Limit < hi {
 		hi = lo + q.Limit
 	}
-	pageArts := make([]artifacts.Artifact, 0, hi-lo)
+	docs := make([]SearchDocument, 0, hi-lo)
 	for _, e := range matched[lo:hi] {
-		pageArts = append(pageArts, e.art)
+		d := buildSearchDocument(e.art)
+		d.Favorite = uv.favorites[e.art.Name]
+		d.Tags = e.mergedTags(uv)
+		docs = append(docs, d)
 	}
-	return searchResult{Total: total, Results: buildSearchDocuments(pageArts), Facets: facets}
+	return searchResult{Total: total, Results: docs, Facets: facets}
 }
 
 func sortEntries(entries []indexEntry, mode string) {

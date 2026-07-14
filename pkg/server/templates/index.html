@@ -44,6 +44,8 @@
   .tags { display: flex; gap: 4px; flex-wrap: wrap; }
   .tag { font-size: 10px; background: #eee; border: 1px solid #999; padding: 0 4px; cursor: pointer; }
   .tag:hover { background: #000; color: #fff; }
+  .star { cursor: pointer; font-size: 15px; line-height: 1; color: #999; margin-right: 2px; user-select: none; }
+  .star.on { color: #e0a400; }
   .links { display: flex; gap: 8px; font-size: 10px; margin-top: 2px; }
   .links a { color: #333; }
   .more { margin: 16px auto 0; display: block; font: inherit; padding: 6px 16px; border: 2px solid #000; background: #fff; box-shadow: 2px 2px 0 #000; cursor: pointer; }
@@ -83,7 +85,7 @@
 <script>
 (function(){
   var PAGE = 60;
-  var state = { q: "", sort: "recent", type: "", project: "", model: "", library: "", warnings: false, tags: [], offset: 0 };
+  var state = { q: "", sort: "recent", type: "", project: "", model: "", library: "", warnings: false, favorite: false, tags: [], offset: 0 };
   var lastTotal = 0;
 
   var el = function(id){ return document.getElementById(id); };
@@ -115,14 +117,31 @@
       fx.appendChild(g);
     });
     el("clear").style.display = anyFilter() ? "inline-block" : "none";
-    // warnings toggle
+    // flags group: favorites + warnings toggles
     var wg = document.createElement("div"); wg.className = "facet-group";
     wg.innerHTML = "<h3>Flags</h3>";
+    var favCount = (data.facets.favorite && data.facets.favorite["true"]) || 0;
+    var frow = document.createElement("div");
+    frow.className = "facet-val" + (state.favorite?" active":"");
+    frow.innerHTML = "<span>★ favorites</span><span class='fcount'>"+favCount+"</span>";
+    frow.onclick = function(){ state.favorite = !state.favorite; reload(); };
+    wg.appendChild(frow);
     var wrow = document.createElement("div");
     wrow.className = "facet-val" + (state.warnings?" active":"");
     wrow.innerHTML = "<span>has warnings</span>";
     wrow.onclick = function(){ state.warnings = !state.warnings; reload(); };
     wg.appendChild(wrow); fx.appendChild(wg);
+  }
+
+  function toggleFavorite(key, cardEl){
+    var body = new URLSearchParams(); body.set("key", key);
+    fetch("/api/favorite", { method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:body })
+      .then(function(r){ return r.json(); })
+      .then(function(res){
+        var star = cardEl.querySelector(".star");
+        if (star){ star.classList.toggle("on", res.favorite); star.textContent = res.favorite ? "★" : "☆"; }
+        if (state.favorite) reload(); // if filtering favorites, drop/keep accordingly
+      });
   }
 
   function renderCards(results, append){
@@ -131,6 +150,7 @@
     el("empty").style.display = (results.length===0 && !append && lastTotal===0) ? "block" : "none";
     results.forEach(function(d){
       var c = document.createElement("div"); c.className = "card";
+      var star = "<span class='star"+(d.favorite?" on":"")+"' title='favorite'>"+(d.favorite?"★":"☆")+"</span>";
       var badges = "<span class='badge "+esc(d.type)+"'>"+esc(d.type)+"</span>";
       if (d.warnings_count>0) badges += "<span class='badge warn' title='reconstruction warnings'>⚠ "+d.warnings_count+"</span>";
       if (d.model) badges += "<span class='meta'>"+esc(d.model)+"</span>";
@@ -138,19 +158,20 @@
       var links = "<a href='"+esc(d.view_url)+"'>view</a>";
       if (d.source_uuid) links += " <a href='https://claude.ai/chat/"+esc(d.source_uuid)+"' target='_blank'>claude.ai</a>";
       c.innerHTML =
-        "<div class='badges'>"+badges+"</div>" +
+        "<div class='badges'>"+star+badges+"</div>" +
         "<a class='card-title' href='"+esc(d.view_url)+"'>"+esc(d.title||d.name)+"</a>" +
         (d.description?"<div class='meta'>"+esc(d.description)+"</div>":"") +
         (d.updated_at?"<div class='meta'>"+esc(d.updated_at.slice(0,10))+"</div>":"") +
         (tags?"<div class='tags'>"+tags+"</div>":"") +
         "<div class='links'>"+links+"</div>";
       c.querySelectorAll(".tag").forEach(function(tn){ tn.onclick = function(e){ e.preventDefault(); toggleFacet("tag", tn.getAttribute("data-tag")); }; });
+      c.querySelector(".star").onclick = function(){ toggleFavorite(d.name, c); };
       grid.appendChild(c);
     });
     el("more").style.display = (state.offset + PAGE < lastTotal) ? "block" : "none";
   }
 
-  function anyFilter(){ return state.type||state.project||state.model||state.library||state.warnings||state.tags.length>0; }
+  function anyFilter(){ return state.type||state.project||state.model||state.library||state.warnings||state.favorite||state.tags.length>0; }
 
   function toggleFacet(dim, val){
     if (dim === "tag"){ var i = state.tags.indexOf(val); if (i>=0) state.tags.splice(i,1); else state.tags.push(val); }
@@ -164,6 +185,7 @@
     if (state.sort) p.set("sort", state.sort);
     ["type","project","model","library"].forEach(function(k){ if(state[k]) p.set(k, state[k]); });
     if (state.warnings) p.set("warnings","true");
+    if (state.favorite) p.set("favorite","true");
     state.tags.forEach(function(t){ p.append("tag", t); });
     p.set("limit", PAGE); p.set("offset", state.offset);
     return p.toString();
@@ -181,7 +203,7 @@
   el("q").addEventListener("input", debounce(function(){ state.q = el("q").value.trim(); reload(); }, 180));
   el("sort").addEventListener("change", function(){ state.sort = el("sort").value; reload(); });
   el("more").addEventListener("click", function(){ state.offset += PAGE; fetchPage(true); });
-  el("clear").addEventListener("click", function(){ state.type=state.project=state.model=state.library=""; state.tags=[]; state.warnings=false; reload(); });
+  el("clear").addEventListener("click", function(){ state.type=state.project=state.model=state.library=""; state.tags=[]; state.warnings=false; state.favorite=false; reload(); });
 
   function debounce(fn, ms){ var t; return function(){ clearTimeout(t); t=setTimeout(fn, ms); }; }
 

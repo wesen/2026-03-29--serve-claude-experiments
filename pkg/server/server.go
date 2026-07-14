@@ -148,6 +148,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /search-index.json", s.handleSearchIndex)
 	mux.HandleFunc("GET /search", s.handleSearch)
+	mux.HandleFunc("POST /api/favorite", s.handleFavorite)
 	// {name...} matches multi-segment names so artifacts in nested subdirectories
 	// (e.g. "<uuid>/artifacts/Calendar") resolve.
 	mux.HandleFunc("GET /view/{name...}", s.handleView)
@@ -214,21 +215,72 @@ func (s *Server) handleSearchIndex(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	query := searchQuery{
-		Q:        q.Get("q"),
-		Type:     q.Get("type"),
-		Project:  q.Get("project"),
-		Model:    q.Get("model"),
-		Tags:     q["tag"],
-		Library:  q.Get("library"),
-		Warnings: q.Get("warnings") == "true",
-		Sort:     q.Get("sort"),
-		Limit:    atoiDefault(q.Get("limit"), 60),
-		Offset:   atoiDefault(q.Get("offset"), 0),
+		Q:          q.Get("q"),
+		Type:       q.Get("type"),
+		Project:    q.Get("project"),
+		Model:      q.Get("model"),
+		Tags:       q["tag"],
+		Library:    q.Get("library"),
+		Warnings:   q.Get("warnings") == "true",
+		Favorite:   q.Get("favorite") == "true",
+		Collection: int64(atoiDefault(q.Get("collection"), 0)),
+		Sort:       q.Get("sort"),
+		Limit:      atoiDefault(q.Get("limit"), 60),
+		Offset:     atoiDefault(q.Get("offset"), 0),
 	}
+	uv := s.userView(currentUser(r), query.Collection)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(s.index.search(query)); err != nil {
+	if err := json.NewEncoder(w).Encode(s.index.search(query, uv)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// userView loads the acting user's favorites and tags (and, when a collection is
+// being filtered, its item set) for enriching/filtering a search.
+func (s *Server) userView(user string, collection int64) userView {
+	uv := userView{}
+	uv.favorites, _ = s.store.Favorites(user)
+	uv.tags, _ = s.store.TagsByArtifact(user)
+	if collection != 0 {
+		if keys, err := s.store.CollectionItems(user, collection); err == nil {
+			uv.collectionKeys = map[string]bool{}
+			for _, k := range keys {
+				uv.collectionKeys[k] = true
+			}
+		}
+	}
+	return uv
+}
+
+// handleFavorite toggles or sets an artifact's favorite state for the acting user.
+// POST /api/favorite?key=...&on=true|false (omit on to toggle).
+func (s *Server) handleFavorite(w http.ResponseWriter, r *http.Request) {
+	key := r.FormValue("key")
+	if key == "" {
+		http.Error(w, "key required", http.StatusBadRequest)
+		return
+	}
+	user := currentUser(r)
+	var on bool
+	switch r.FormValue("on") {
+	case "true":
+		on = true
+	case "false":
+		on = false
+	default: // toggle
+		cur, _ := s.store.IsFavorite(user, key)
+		on = !cur
+	}
+	if err := s.store.SetFavorite(user, key, on); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"key": key, "favorite": on})
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 func atoiDefault(s string, def int) int {

@@ -21,27 +21,32 @@ type SearchDocument struct {
 	SourceUUID    string   `json:"source_uuid,omitempty"`
 	UpdatedAt     string   `json:"updated_at,omitempty"`
 	WarningsCount int      `json:"warnings_count"`
+	Favorite      bool     `json:"favorite"`
+}
+
+func buildSearchDocument(a artifacts.Artifact) SearchDocument {
+	return SearchDocument{
+		Name:          a.Name,
+		Title:         a.Title,
+		Description:   a.Description,
+		Tags:          append([]string(nil), a.Tags...),
+		OriginalDate:  a.OriginalDate,
+		Filename:      a.Filename,
+		Type:          a.Type,
+		ViewURL:       "/view/" + a.Name,
+		SearchText:    buildSearchText(a),
+		Project:       a.Project,
+		Model:         a.Model,
+		SourceUUID:    a.SourceConversationUUID,
+		UpdatedAt:     a.ConversationUpdatedAt,
+		WarningsCount: len(a.Warnings),
+	}
 }
 
 func buildSearchDocuments(arts []artifacts.Artifact) []SearchDocument {
 	docs := make([]SearchDocument, 0, len(arts))
 	for _, a := range arts {
-		docs = append(docs, SearchDocument{
-			Name:          a.Name,
-			Title:         a.Title,
-			Description:   a.Description,
-			Tags:          append([]string(nil), a.Tags...),
-			OriginalDate:  a.OriginalDate,
-			Filename:      a.Filename,
-			Type:          a.Type,
-			ViewURL:       "/view/" + a.Name,
-			SearchText:    buildSearchText(a),
-			Project:       a.Project,
-			Model:         a.Model,
-			SourceUUID:    a.SourceConversationUUID,
-			UpdatedAt:     a.ConversationUpdatedAt,
-			WarningsCount: len(a.Warnings),
-		})
+		docs = append(docs, buildSearchDocument(a))
 	}
 	return docs
 }
