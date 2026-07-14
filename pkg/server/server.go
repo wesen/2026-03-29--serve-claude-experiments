@@ -151,6 +151,11 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("POST /api/favorite", s.handleFavorite)
 	mux.HandleFunc("POST /api/tags/add", s.handleTagAdd)
 	mux.HandleFunc("POST /api/tags/remove", s.handleTagRemove)
+	mux.HandleFunc("GET /api/collections", s.handleCollectionsList)
+	mux.HandleFunc("POST /api/collections", s.handleCollectionCreate)
+	mux.HandleFunc("DELETE /api/collections/{id}", s.handleCollectionDelete)
+	mux.HandleFunc("POST /api/collections/{id}/items", s.handleCollectionAddItem)
+	mux.HandleFunc("DELETE /api/collections/{id}/items", s.handleCollectionRemoveItem)
 	// {name...} matches multi-segment names so artifacts in nested subdirectories
 	// (e.g. "<uuid>/artifacts/Calendar") resolve.
 	mux.HandleFunc("GET /view/{name...}", s.handleView)
@@ -306,6 +311,87 @@ func (s *Server) tagOp(w http.ResponseWriter, r *http.Request, add bool) {
 	}
 	tags, _ := s.store.TagsFor(user, key)
 	writeJSON(w, map[string]any{"key": key, "tags": tags})
+}
+
+// ---- collections --------------------------------------------------------
+
+func (s *Server) handleCollectionsList(w http.ResponseWriter, r *http.Request) {
+	cols, err := s.store.ListCollections(currentUser(r))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if cols == nil {
+		cols = []userdata.Collection{}
+	}
+	writeJSON(w, cols)
+}
+
+func (s *Server) handleCollectionCreate(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		http.Error(w, "name required", http.StatusBadRequest)
+		return
+	}
+	id, err := s.store.CreateCollection(currentUser(r), name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"id": id, "name": name})
+}
+
+func (s *Server) handleCollectionDelete(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.DeleteCollection(currentUser(r), id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+func (s *Server) handleCollectionAddItem(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	key := r.FormValue("key")
+	if key == "" {
+		http.Error(w, "key required", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.AddToCollection(currentUser(r), id, key); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+func (s *Server) handleCollectionRemoveItem(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	key := r.URL.Query().Get("key") // DELETE: key comes via query
+	if key == "" {
+		http.Error(w, "key required", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.RemoveFromCollection(currentUser(r), id, key); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+func pathID(r *http.Request) (int64, error) {
+	return strconv.ParseInt(r.PathValue("id"), 10, 64)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

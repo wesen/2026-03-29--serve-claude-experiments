@@ -50,6 +50,8 @@
   .utag { font-size: 10px; background: #eef6ff; border: 1px solid #7ab; padding: 0 3px; display: inline-flex; align-items: center; gap: 2px; }
   .utag .x { cursor: pointer; color: #b00; font-weight: bold; }
   .addtag { font-size: 10px; width: 60px; border: 1px dashed #999; padding: 0 3px; background: #fff; }
+  .addcol { font-size: 10px; border: 1px solid #999; background: #fff; }
+  .links a.rmcol { color: #b00; }
   .links { display: flex; gap: 8px; font-size: 10px; margin-top: 2px; }
   .links a { color: #333; }
   .more { margin: 16px auto 0; display: block; font: inherit; padding: 6px 16px; border: 2px solid #000; background: #fff; box-shadow: 2px 2px 0 #000; cursor: pointer; }
@@ -76,6 +78,7 @@
       <div class="layout">
         <aside class="facets">
           <span id="clear" class="clear" style="display:none">✕ clear filters</span>
+          <div id="collections"></div>
           <div id="facets"></div>
         </aside>
         <main>
@@ -89,8 +92,9 @@
 <script>
 (function(){
   var PAGE = 60;
-  var state = { q: "", sort: "recent", type: "", project: "", model: "", library: "", warnings: false, favorite: false, tags: [], offset: 0 };
+  var state = { q: "", sort: "recent", type: "", project: "", model: "", library: "", warnings: false, favorite: false, collection: 0, tags: [], offset: 0 };
   var lastTotal = 0;
+  var collections = [];
 
   var el = function(id){ return document.getElementById(id); };
   var esc = function(s){ var d=document.createElement("div"); d.textContent = s==null?"":s; return d.innerHTML; };
@@ -155,6 +159,50 @@
       .then(function(){ reload(); });
   }
 
+  function loadCollections(){
+    return fetch("/api/collections").then(function(r){ return r.json(); }).then(function(cols){
+      collections = cols || [];
+      renderCollectionsSidebar();
+    });
+  }
+
+  function renderCollectionsSidebar(){
+    var box = el("collections"); box.innerHTML = "";
+    var g = document.createElement("div"); g.className = "facet-group";
+    g.innerHTML = "<h3>Collections</h3>";
+    if (state.collection){
+      var allRow = document.createElement("div"); allRow.className = "facet-val";
+      allRow.innerHTML = "<span>✕ show all</span>";
+      allRow.onclick = function(){ state.collection = 0; reload(); };
+      g.appendChild(allRow);
+    }
+    collections.forEach(function(c){
+      var row = document.createElement("div");
+      row.className = "facet-val" + (state.collection===c.id?" active":"");
+      row.innerHTML = "<span>"+esc(c.name)+"</span><span class='fcount'>"+c.count+"</span>";
+      row.onclick = function(){ state.collection = (state.collection===c.id)?0:c.id; reload(); };
+      g.appendChild(row);
+    });
+    var mk = document.createElement("input");
+    mk.className = "addtag"; mk.type = "text"; mk.placeholder = "＋ new collection"; mk.style.width = "100%"; mk.style.marginTop = "4px";
+    mk.addEventListener("keydown", function(e){ if(e.key==="Enter" && mk.value.trim()){
+      var body = new URLSearchParams(); body.set("name", mk.value.trim());
+      fetch("/api/collections", { method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:body })
+        .then(function(){ mk.value=""; loadCollections(); });
+    }});
+    g.appendChild(mk);
+    box.appendChild(g);
+  }
+
+  function addToCollection(colId, key){
+    fetch("/api/collections/"+colId+"/items", { method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:new URLSearchParams({key:key}) })
+      .then(function(){ loadCollections(); });
+  }
+  function removeFromCollection(colId, key){
+    fetch("/api/collections/"+colId+"/items?key="+encodeURIComponent(key), { method:"DELETE" })
+      .then(function(){ loadCollections(); reload(); });
+  }
+
   function renderCards(results, append){
     var grid = el("grid");
     if (!append) grid.innerHTML = "";
@@ -168,6 +216,8 @@
       var tags = (d.tags||[]).map(function(t){ return "<span class='tag' data-tag='"+esc(t)+"'>"+esc(t)+"</span>"; }).join("");
       var links = "<a href='"+esc(d.view_url)+"'>view</a>";
       if (d.source_uuid) links += " <a href='https://claude.ai/chat/"+esc(d.source_uuid)+"' target='_blank'>claude.ai</a>";
+      if (state.collection) links += " <a href='javascript:void(0)' class='rmcol'>− remove</a>";
+      var opts = "<option value=''>＋ collection…</option>" + collections.map(function(c2){ return "<option value='"+c2.id+"'>"+esc(c2.name)+"</option>"; }).join("");
       var userTags = (d.user_tags||[]).map(function(t){ return "<span class='utag' data-tag='"+esc(t)+"'>"+esc(t)+"<b class='x' title='remove'>×</b></span>"; }).join("");
       c.innerHTML =
         "<div class='badges'>"+star+badges+"</div>" +
@@ -177,18 +227,22 @@
         (tags?"<div class='tags'>"+tags+"</div>":"") +
         "<div class='tag-editor'>"+userTags+"<input class='addtag' type='text' placeholder='+tag' />" +
         "</div>" +
-        "<div class='links'>"+links+"</div>";
+        "<div class='links'>"+links+" <select class='addcol'>"+opts+"</select></div>";
       c.querySelectorAll(".tag").forEach(function(tn){ tn.onclick = function(e){ e.preventDefault(); toggleFacet("tag", tn.getAttribute("data-tag")); }; });
       c.querySelector(".star").onclick = function(){ toggleFavorite(d.name, c); };
       c.querySelectorAll(".utag .x").forEach(function(xb){ xb.onclick = function(){ tagOp("remove", d.name, xb.parentNode.getAttribute("data-tag")); }; });
       var addInput = c.querySelector(".addtag");
       addInput.addEventListener("keydown", function(e){ if(e.key==="Enter" && addInput.value.trim()){ tagOp("add", d.name, addInput.value.trim()); } });
+      var addSel = c.querySelector(".addcol");
+      addSel.addEventListener("change", function(){ if(addSel.value){ addToCollection(addSel.value, d.name); addSel.value=""; } });
+      var rm = c.querySelector(".rmcol");
+      if (rm) rm.onclick = function(){ removeFromCollection(state.collection, d.name); };
       grid.appendChild(c);
     });
     el("more").style.display = (state.offset + PAGE < lastTotal) ? "block" : "none";
   }
 
-  function anyFilter(){ return state.type||state.project||state.model||state.library||state.warnings||state.favorite||state.tags.length>0; }
+  function anyFilter(){ return state.type||state.project||state.model||state.library||state.warnings||state.favorite||state.collection||state.tags.length>0; }
 
   function toggleFacet(dim, val){
     if (dim === "tag"){ var i = state.tags.indexOf(val); if (i>=0) state.tags.splice(i,1); else state.tags.push(val); }
@@ -203,6 +257,7 @@
     ["type","project","model","library"].forEach(function(k){ if(state[k]) p.set(k, state[k]); });
     if (state.warnings) p.set("warnings","true");
     if (state.favorite) p.set("favorite","true");
+    if (state.collection) p.set("collection", state.collection);
     state.tags.forEach(function(t){ p.append("tag", t); });
     p.set("limit", PAGE); p.set("offset", state.offset);
     return p.toString();
@@ -220,10 +275,11 @@
   el("q").addEventListener("input", debounce(function(){ state.q = el("q").value.trim(); reload(); }, 180));
   el("sort").addEventListener("change", function(){ state.sort = el("sort").value; reload(); });
   el("more").addEventListener("click", function(){ state.offset += PAGE; fetchPage(true); });
-  el("clear").addEventListener("click", function(){ state.type=state.project=state.model=state.library=""; state.tags=[]; state.warnings=false; state.favorite=false; reload(); });
+  el("clear").addEventListener("click", function(){ state.type=state.project=state.model=state.library=""; state.tags=[]; state.warnings=false; state.favorite=false; state.collection=0; reload(); });
 
   function debounce(fn, ms){ var t; return function(){ clearTimeout(t); t=setTimeout(fn, ms); }; }
 
+  loadCollections();
   reload();
 })();
 </script>
