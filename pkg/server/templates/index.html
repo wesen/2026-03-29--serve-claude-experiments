@@ -318,7 +318,12 @@
       var badges = "<span class='badge "+esc(d.type)+"'>"+esc(d.type)+"</span>";
       if (d.warnings_count>0) badges += "<span class='badge warn' title='reconstruction warnings'>⚠ "+d.warnings_count+"</span>";
       if (d.model) badges += "<span class='meta'>"+esc(d.model)+"</span>";
-      var tags = (d.tags||[]).map(function(t){ return "<span class='tag' data-tag='"+esc(t)+"'>"+esc(t)+"</span>"; }).join("");
+      // d.tags is manifest ∪ user tags; user tags render below as removable
+      // chips, so the gray (filterable) row shows manifest-only tags to avoid
+      // showing the same tag twice.
+      var userSet = {}; (d.user_tags||[]).forEach(function(t){ userSet[t.toLowerCase()] = true; });
+      var manifestTags = (d.tags||[]).filter(function(t){ return !userSet[t.toLowerCase()]; });
+      var tags = manifestTags.map(function(t){ return "<span class='tag' data-tag='"+esc(t)+"'>"+esc(t)+"</span>"; }).join("");
       var leftLinks = "<a href='"+esc(d.view_url)+"'>view</a>";
       if (d.source_uuid) leftLinks += "<a href='https://claude.ai/chat/"+esc(d.source_uuid)+"' target='_blank'>claude.ai</a>";
       var rmLink = state.collection ? "<a href='javascript:void(0)' class='rmcol' title='Remove from this collection'>✕</a>" : "";
