@@ -1,6 +1,7 @@
 package userdata
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 )
@@ -112,5 +113,21 @@ func TestCollectionOwnershipIsolation(t *testing.T) {
 	cols, _ := s.ListCollections("other")
 	if len(cols) != 0 {
 		t.Fatalf("other user should see no collections, got %v", cols)
+	}
+	// The "not owned" error is the sentinel, so handlers can map it to 404.
+	if err := s.AddToCollection("other", id, "x"); !errors.Is(err, ErrCollectionNotFound) {
+		t.Fatalf("want ErrCollectionNotFound, got %v", err)
+	}
+}
+
+func TestCollectionNotFoundSentinel(t *testing.T) {
+	s := openTest(t)
+	// A collection id that never existed is reported as ErrCollectionNotFound,
+	// not a generic (500-mapped) error.
+	if err := s.AddToCollection("default", 999999, "k"); !errors.Is(err, ErrCollectionNotFound) {
+		t.Fatalf("AddToCollection missing id: want ErrCollectionNotFound, got %v", err)
+	}
+	if err := s.RemoveFromCollection("default", 999999, "k"); !errors.Is(err, ErrCollectionNotFound) {
+		t.Fatalf("RemoveFromCollection missing id: want ErrCollectionNotFound, got %v", err)
 	}
 }

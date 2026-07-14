@@ -13,11 +13,17 @@ package userdata
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+// ErrCollectionNotFound is returned by collection operations when the collection
+// does not exist or is not owned by the acting user. Handlers map it to a 404
+// rather than a 500 (it is a client error, not a server fault).
+var ErrCollectionNotFound = errors.New("collection not found")
 
 // Store wraps a SQLite database holding per-user artifact organization.
 type Store struct {
@@ -262,7 +268,7 @@ func (s *Store) AddToCollection(user string, id int64, key string) error {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("collection %d not found for user", id)
+		return fmt.Errorf("collection %d: %w", id, ErrCollectionNotFound)
 	}
 	var maxPos sql.NullInt64
 	if err := s.db.QueryRow(`SELECT MAX(position) FROM collection_items WHERE collection_id = ?`, id).Scan(&maxPos); err != nil {
@@ -281,7 +287,7 @@ func (s *Store) RemoveFromCollection(user string, id int64, key string) error {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("collection %d not found for user", id)
+		return fmt.Errorf("collection %d: %w", id, ErrCollectionNotFound)
 	}
 	_, err = s.db.Exec(`DELETE FROM collection_items WHERE collection_id = ? AND artifact_key = ?`, id, key)
 	return err
@@ -294,7 +300,7 @@ func (s *Store) ReorderCollection(user string, id int64, keys []string) error {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("collection %d not found for user", id)
+		return fmt.Errorf("collection %d: %w", id, ErrCollectionNotFound)
 	}
 	tx, err := s.db.Begin()
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -438,10 +439,20 @@ func (s *Server) handleCollectionAddItem(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := s.store.AddToCollection(currentUser(r), id, key); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		collectionErr(w, err)
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true})
+}
+
+// collectionErr maps a not-found/not-owned collection to 404 (a client error)
+// and anything else to 500.
+func collectionErr(w http.ResponseWriter, err error) {
+	if errors.Is(err, userdata.ErrCollectionNotFound) {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	http.Error(w, err.Error(), http.StatusInternalServerError)
 }
 
 func (s *Server) handleCollectionRemoveItem(w http.ResponseWriter, r *http.Request) {
@@ -456,7 +467,7 @@ func (s *Server) handleCollectionRemoveItem(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err := s.store.RemoveFromCollection(currentUser(r), id, key); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		collectionErr(w, err)
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true})
