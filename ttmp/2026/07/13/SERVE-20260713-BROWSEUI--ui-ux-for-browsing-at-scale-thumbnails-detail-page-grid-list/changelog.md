@@ -62,3 +62,8 @@ Step 20: mobile hamburger drawer — search/filters/facets fold into a sticky un
 
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/templates/index.html — Mobile drawer re-parenting (Step 20)
 
+
+## 2026-07-14
+
+Step 21: full-resolution capture stored (<hash>-full.png) and served to the gallery lightbox via /thumb?full=1; small thumbnails still 480px (commit a5ab6e5)
+

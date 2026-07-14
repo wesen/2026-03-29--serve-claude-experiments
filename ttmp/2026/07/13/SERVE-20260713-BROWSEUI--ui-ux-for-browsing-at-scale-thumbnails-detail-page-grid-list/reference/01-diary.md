@@ -947,3 +947,51 @@ On a narrow screen the search bar and facet sidebar consumed the top of the page
 
 ### Technical details
 - `matchMedia("(max-width: 720px)")`; drawer children order = toolbar, advanced, facets; `#count` moved to `.topbar` so it stays visible while scrolled.
+
+## Step 21: Full-resolution capture for the lightbox
+
+The gallery lightbox (🔍) showed the 480px thumbnail scaled up, so it was soft at full screen. The renderer already captured at 1200×900 and discarded that full image after downscaling — this step keeps it and serves it to the lightbox, so the magnifier shows a crisp high-res view while the small thumbnails stay small.
+
+### Prompt Context
+
+**User prompt (verbatim):** "- clicking the magnifiying glass should show a high res version of the thumbnail, whch means we should probably capture it high res and render it down for the thumbnail(s)."
+
+**Assistant interpretation:** Store the full-resolution render (not just the downscaled thumbnail) and have the lightbox display it.
+
+**Inferred user intent:** A sharp, zoomable image when opening an artifact in the gallery.
+
+**Commit (code):** a5ab6e5 — "feat: store the full-res capture and show it in the gallery lightbox"
+
+### What I did
+- `thumbnail.go`: `fullPathFor`/`pathForKind`; `get(ctx, name, hash, full bool)` now writes **both** `<hash>-<ver>.png` (480) and `<hash>-<ver>-full.png` (full 1200×900) from one render and returns the requested variant; `saveUploaded` stores the uploaded image as the full and a downscaled thumb; `invalidate` removes both; `etag(hash, full)` distinguishes variants.
+- `server.go`: `handleThumb` reads `?full=1`, uses the versioned full ETag, and passes `full` to `get`; backfill/rerender call `get(..., false)`.
+- `index.html`: `showLightbox` sets the 480 thumb instantly, then swaps to `/thumb/<name>?full=1` when it loads (guarded so navigating away doesn't swap the wrong image).
+- Updated `thumbnail_test.go` `get` calls for the new signature.
+
+### Why
+- The full capture was free (already rendered), so keeping it costs only disk. Serving it lazily (rendered on the first `?full=1` request for already-thumbnailed artifacts) avoids a mass re-render — the backfill still only produces the small thumbnails.
+- Instant-thumb-then-swap keeps the lightbox responsive even when the full must be generated on first open.
+
+### What worked
+- Verified: `/thumb/<name>` → 480×352, `/thumb/<name>?full=1` → 1200×757, both cached on disk; unit tests green.
+
+### What didn't work
+- N/A.
+
+### What was tricky to build
+- **Single-flight for two outputs.** Thumb and full share the hash-keyed flight. A fast-path `os.ReadFile(want)` serves an existing variant without entering the flight; the flight re-checks *both* files and renders if *either* is missing, then writes both — so a full-res request when only the small thumb exists (older render) correctly regenerates both, and concurrent thumb+full requests still collapse to one render.
+
+### What warrants a second pair of eyes
+- The `get` two-variant logic (fast path + flight re-check of both) and the distinct ETag per variant (so a browser that cached the small one doesn't 304 the full request — they are different URLs *and* different ETags).
+- `renderEnvVersion` was intentionally **not** bumped, so existing 480 thumbs stay valid and fulls fill in lazily; confirm that's the desired rollout (vs. a mass regenerate).
+
+### What should be done in the future
+- If "high res" needs to be crisper on 4K displays, render at a higher device scale factor (e.g. `--force-device-scale-factor=2`) — bump `renderEnvVersion` when doing so.
+- A gallery-side recapture affordance + a per-artifact thumb version so cards refresh after a recapture without a hard reload (still outstanding from Step 15).
+
+### Code review instructions
+- `thumbnail.go`: `get`, `saveUploaded`, `invalidate`, `fullPathFor`/`pathForKind`/`etag`. `server.go`: `handleThumb` `?full=1`. `index.html`: `showLightbox` swap.
+- Validate: `curl -o t.png /thumb/<name>` (480) vs `curl -o f.png '/thumb/<name>?full=1'` (1200); open the lightbox and watch it sharpen.
+
+### Technical details
+- Full path `<hash>-<ver>-full.png`; full ETag `"<hash>-<ver>-full"`; render viewport unchanged at 1200×900.
