@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"regexp"
 	"sort"
@@ -13,12 +15,23 @@ import (
 
 // indexEntry is one artifact plus the derived data search needs: its lowercased
 // full-text haystack (metadata + source + transcript), the third-party libraries
-// it imports, and a timestamp for "recent" sorting.
+// it imports, a content hash (the thumbnail cache key), and a timestamp for
+// "recent" sorting.
 type indexEntry struct {
 	art       artifacts.Artifact
 	libraries []string
 	haystack  string
+	hash      string
 	sortTime  int64
+}
+
+// contentHash returns a short, stable hash of an artifact's source. It is the
+// thumbnail cache key: an unchanged artifact keeps its hash (and its cached
+// thumbnail) across restarts, while any edit yields a new hash and thus a new,
+// missing thumbnail that regenerates on next request — no explicit invalidation.
+func contentHash(body string) string {
+	sum := sha256.Sum256([]byte(body))
+	return hex.EncodeToString(sum[:])[:16]
 }
 
 // searchIndex is a cached, in-memory index rebuilt on demand (startup + file
@@ -63,6 +76,7 @@ func (ix *searchIndex) rebuild() error {
 			art:       a,
 			libraries: extractLibraries(body),
 			haystack:  strings.ToLower(strings.Join(parts, "\n")),
+			hash:      contentHash(body),
 			sortTime:  entrySortTime(a),
 		})
 	}
@@ -70,6 +84,19 @@ func (ix *searchIndex) rebuild() error {
 	ix.entries = entries
 	ix.mu.Unlock()
 	return nil
+}
+
+// hashByName returns the content hash for an artifact name (the thumbnail cache
+// key), reading from the in-memory index so /thumb never rescans.
+func (ix *searchIndex) hashByName(name string) (string, bool) {
+	ix.mu.RLock()
+	defer ix.mu.RUnlock()
+	for _, e := range ix.entries {
+		if e.art.Name == name {
+			return e.hash, true
+		}
+	}
+	return "", false
 }
 
 // artifacts returns a snapshot of the indexed artifacts (for the index page and
@@ -231,6 +258,7 @@ func (ix *searchIndex) search(q searchQuery, uv userView) searchResult {
 	docs := make([]SearchDocument, 0, hi-lo)
 	for _, e := range matched[lo:hi] {
 		d := buildSearchDocument(e.art)
+		d.Hash = e.hash
 		d.Favorite = uv.favorites[e.art.Name]
 		d.Tags = e.mergedTags(uv)
 		d.UserTags = append([]string(nil), uv.tags[e.art.Name]...)

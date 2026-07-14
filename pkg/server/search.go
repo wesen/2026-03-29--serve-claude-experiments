@@ -23,6 +23,8 @@ type SearchDocument struct {
 	WarningsCount int      `json:"warnings_count"`
 	Favorite      bool     `json:"favorite"`
 	UserTags      []string `json:"user_tags,omitempty"`
+	Hash          string   `json:"hash,omitempty"`      // content hash; the thumbnail cache key
+	RenderOK      *bool    `json:"render_ok,omitempty"` // nil = not yet rendered; set from thumbnail render status
 }
 
 func buildSearchDocument(a artifacts.Artifact) SearchDocument {
