@@ -14,6 +14,7 @@ type SearchDocument struct {
 	OriginalDate  string   `json:"original_date"`
 	Filename      string   `json:"filename"`
 	Type          string   `json:"type"`
+	Size          int64    `json:"size"`
 	ViewURL       string   `json:"view_url"`
 	SearchText    string   `json:"search_text"`
 	Project       string   `json:"project,omitempty"`
@@ -36,6 +37,7 @@ func buildSearchDocument(a artifacts.Artifact) SearchDocument {
 		OriginalDate:  a.OriginalDate,
 		Filename:      a.Filename,
 		Type:          a.Type,
+		Size:          a.Size,
 		ViewURL:       "/view/" + a.Name,
 		SearchText:    buildSearchText(a),
 		Project:       a.Project,
