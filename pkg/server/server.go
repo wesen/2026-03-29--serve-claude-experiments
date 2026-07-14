@@ -9,12 +9,24 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-go-golems/serve-artifacts/pkg/artifacts"
+	"github.com/go-go-golems/serve-artifacts/pkg/userdata"
 )
+
+// DefaultUserID is the single hardcoded account used until a real identity
+// provider is integrated. The schema is already multi-user; only currentUser
+// needs to change to support real accounts.
+const DefaultUserID = "default"
+
+// currentUser resolves the acting user for a request. This is the single seam a
+// future IdP replaces (reading a session cookie / bearer token); today it always
+// returns the default account.
+func currentUser(_ *http.Request) string { return DefaultUserID }
 
 //go:embed templates
 var templateFS embed.FS
@@ -23,6 +35,7 @@ var templateFS embed.FS
 type Server struct {
 	scanner         *artifacts.Scanner
 	index           *searchIndex
+	store           *userdata.Store
 	dir             string
 	port            int
 	watch           bool
@@ -34,9 +47,10 @@ type Server struct {
 
 // Config holds server configuration.
 type Config struct {
-	Dir   string
-	Port  int
-	Watch bool
+	Dir    string
+	Port   int
+	Watch  bool
+	DBPath string // SQLite path for user data; empty = default under the config dir
 }
 
 var templateFuncs = template.FuncMap{
@@ -78,9 +92,26 @@ func New(cfg Config) (*Server, error) {
 		w = newWatcher(cfg.Dir)
 	}
 
+	dbPath := cfg.DBPath
+	if dbPath == "" {
+		dbPath = defaultDBPath()
+	}
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		return nil, fmt.Errorf("creating db directory: %w", err)
+	}
+	store, err := userdata.Open(dbPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := store.EnsureUser(DefaultUserID, "Default"); err != nil {
+		return nil, err
+	}
+	log.Printf("User data (favorites/tags/collections): %s", dbPath)
+
 	return &Server{
 		scanner:         scanner,
 		index:           newSearchIndex(scanner),
+		store:           store,
 		dir:             cfg.Dir,
 		port:            cfg.Port,
 		watch:           cfg.Watch,
@@ -89,6 +120,15 @@ func New(cfg Config) (*Server, error) {
 		indexTemplate:   indexTmpl,
 		jsxHostTemplate: jsxHostTmpl,
 	}, nil
+}
+
+// defaultDBPath returns the default SQLite location under the user config dir.
+func defaultDBPath() string {
+	base, err := os.UserConfigDir()
+	if err != nil || base == "" {
+		return filepath.Join(".", ".serve-artifacts", "userdata.db")
+	}
+	return filepath.Join(base, "serve-artifacts", "userdata.db")
 }
 
 // reloadScript is injected into served pages when watch mode is enabled.

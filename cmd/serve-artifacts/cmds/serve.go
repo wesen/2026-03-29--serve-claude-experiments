@@ -9,6 +9,7 @@ func NewServeCmd() *cobra.Command {
 	var port int
 	var dir string
 	var watch bool
+	var db string
 
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -28,9 +29,10 @@ Examples:
   serve-artifacts serve --dir ~/claude-artifacts --watch`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := server.Config{
-				Dir:   dir,
-				Port:  port,
-				Watch: watch,
+				Dir:    dir,
+				Port:   port,
+				Watch:  watch,
+				DBPath: db,
 			}
 			srv, err := server.New(cfg)
 			if err != nil {
@@ -43,6 +45,7 @@ Examples:
 	cmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to listen on")
 	cmd.Flags().StringVarP(&dir, "dir", "d", ".", "Directory containing artifacts")
 	cmd.Flags().BoolVarP(&watch, "watch", "w", false, "Watch for file changes and auto-reload browsers")
+	cmd.Flags().StringVar(&db, "db", "", "SQLite database for favorites/tags/collections (default: user config dir)")
 
 	return cmd
 }
