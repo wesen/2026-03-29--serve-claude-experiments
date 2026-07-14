@@ -784,3 +784,118 @@ The gallery is a single-page app, so clicking into an artifact and pressing Back
 
 ### Technical details
 - URL params: search state (`q/sort/type/project/model/library/after/before/warnings/favorite/collection/tag*`), plus `view`, `n` (loaded count, omitted when ≤ PAGE), `y` (scroll, omitted when 0).
+
+## Step 17: Move the thumbnail-capture shortcut off a bare letter
+
+Plain `c` for "capture view" collided with artifacts that read plain keystrokes. This step changes it to a modifier combo that never conflicts with typing.
+
+### Prompt Context
+
+**User prompt (verbatim):** "- it should not just be \"c\" because some artifacts use keyboard input. Maybe some shortcut like ctrl-shift-c or so? \n- project names are not being resolved and are just ugly UUIDs \n- create a gallery mode where I can see the screenshot in full basically and browse left / right \n- add a magnifying glass icon to the screenshots to zoom in on them. \n- add proper react router so that the url bar are shareable. \n- scrolling the artifacts should leave the sidebar / filter bar in place, basically just scroll wihin the results."
+
+**Assistant interpretation:** Change the capture keybinding to a modifier combo (this step); plus five more UI changes handled in Steps 18–19.
+
+**Inferred user intent:** Shortcuts must not steal keys the artifact itself uses.
+
+**Commit (code):** 9a5f14e — "fix: use Ctrl/Cmd+Shift+C (not 'c') for thumbnail capture"
+
+### What I did
+- `artifact.html` keydown: capture now fires on `(ctrlKey||metaKey) && shiftKey && key==='c'` with `preventDefault`, checked before the typing guard; button title updated.
+
+### Why / What worked / What was tricky
+- The parent detail-page listener only sees keys when focus is *outside* the iframe, but a modifier combo is unambiguous regardless. Ctrl+Shift+C is Chrome's element-picker shortcut, so it may be intercepted when devtools is open — the button remains the always-available affordance. Verified the combo triggers capture and plain `c` no longer does.
+
+### What warrants a second pair of eyes / future
+- If the devtools clash is annoying, switch to Alt+Shift+C. N/A otherwise.
+
+### Code review instructions
+- `artifact.html`: the keydown handler's first branch.
+
+### Technical details
+- `(e.ctrlKey||e.metaKey) && e.shiftKey && (e.key==='C'||e.key==='c')`.
+
+## Step 18: Resolve project UUIDs to human names
+
+Artifacts displayed raw project UUIDs (`019d15d9-…`) instead of names like "EINK-OS". This resolves them from a `projects.json` map at the serve root.
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 17)
+
+**Assistant interpretation:** Show human project names instead of UUIDs.
+
+**Inferred user intent:** Legible project facets/labels.
+
+**Commit (code):** 7beb6af — "feat: resolve project UUIDs to human names via projects.json"
+
+### What I did
+- Generated `~/Downloads/claude-downloads/projects.json` (`{uuid:name}` for all 27 projects) via `surf-go claude projects --with-glaze-output --output json`.
+- `server.go`: `loadProjectNames(dir)` reads `<dir>/projects.json` (accepts a `{uuid:name}` map or a `[{uuid,name}]` list). `New()` loads it, passes it to `newSearchIndex(sc, projectNames)`, and stores it on the server.
+- `index.go`: `searchIndex.projectNames`; in `rebuild()`, resolve `a.Project` (uuid → name) before indexing, so facets/search/filter all use the name.
+- `handleArtifactJSON`: resolve the project name for the detail page too.
+
+### Why
+- Resolving at ingest means the name flows to every consumer (facet value, `project:` filter, SearchDocument.Project) with one change; the detail handler reads the artifact directly (not the index), so it resolves separately.
+
+### What worked
+- The project facet now reads `{'(none)':177, 'EINK-OS':19, 'WRITING':2}` instead of UUIDs.
+
+### What was tricky / second eyes / future
+- `projects.json` is user data in the serve dir, not committed. It is loaded once at startup (a file-watch rebuild does not reload it) — acceptable; a future improvement is to reload it on rebuild. The generation step needs the surf browser bridge.
+
+### Code review instructions
+- `server.go`: `loadProjectNames`, the `New()` wiring, `handleArtifactJSON`. `index.go`: the resolve line in `rebuild()`.
+- Validate: `curl 'localhost:PORT/search' | jq '.facets.project'` shows names.
+
+### Technical details
+- `projects.json` format: `{"<uuid>":"<name>", …}`.
+
+## Step 19: Gallery lightbox (magnifier), fixed filter/sidebar with a scrollable results pane, and shareable gallery URLs
+
+Three related browsing improvements: a full-screen gallery lightbox opened by a magnifier on each thumbnail (browse left/right through results), an app-shell layout where the filter bar and facet sidebar stay put while only the results scroll, and shareable deep-link URLs for the lightbox. Together these make a large library pleasant to browse and every view shareable.
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 17)
+
+**Assistant interpretation:** Build a lightbox gallery (items 3+4), keep the chrome fixed while results scroll (item 6), and make URLs shareable (item 5).
+
+**Inferred user intent:** Photo-gallery-style browsing at scale, stable chrome, and copy-pasteable links to any view.
+
+**Commit (code):** daaa4ce — "feat: gallery lightbox (magnifier), sticky filter/sidebar with scrollable results, shareable gallery URLs"
+
+### What I did
+- **Lightbox** (`index.html`): a 🔍 overlay on each grid thumbnail opens `#lightbox` (dark full-screen), showing the artifact's screenshot large with ‹/› buttons and ←/→ keys, a counter, and open/details links. Steps through `allDocs` (every loaded result, tracked in `renderCards`); at the end it triggers a "load more" and advances via `lbPending`.
+- **App-shell layout**: `body{overflow:hidden}`, `.content` a full-height flex column with the header (title/toolbar/advanced) `flex:none` and `.layout{flex:1;min-height:0}`; `.facets` and `main#results` each `overflow-y:auto`. Step-16 scroll tracking moved from `window.scrollY` to `el("results").scrollTop`.
+- **Shareable URLs (item 5)**: opening the lightbox `pushState`s `?gallery=<name>` (Back closes it); stepping `replaceState`s it; `popstate` opens/closes from the param; a `?gallery=<name>` URL opens the lightbox at that artifact once results load (`initialGallery`); `writeURL` preserves the param. Combined with the already-URL-encoded search state and the real `/artifact/{name}` pages, the URL bar is fully shareable.
+
+### Why
+- I implemented routing with the History API rather than migrating to React Router: the app is a Go-templated vanilla-JS SPA, and a React rewrite would be a large, high-risk change across every feature already built, for the *stated* goal (shareable URLs) that the History-API approach fully meets.
+- Tracking `allDocs` gives the lightbox a stable list to page through independent of the DOM.
+
+### What worked
+- Verified: 🔍 opens the lightbox at the right artifact; ‹/› and ←/→ step ("1/60" → "2/60 Trinnov…"); scrolling the results pane keeps `window.scrollY===0` with the toolbar fixed; a pasted `?gallery=<name>` URL opens the lightbox at that artifact; 0 console errors.
+
+### What didn't work
+- N/A after wiring the URL-preservation guard (see tricky).
+
+### What was tricky to build
+- **`writeURL` dropping the gallery param.** `writeURL` rebuilds the query from `state`, which has no gallery field, so a scroll/`fetchPage` while the lightbox was open would erase `?gallery`. Fixed by having `writeURL` re-add `gallery=<current name>` whenever the lightbox is open; `closeLightbox` removes it via `replaceState`.
+- **Moving the scroll origin.** Making the results a scroll container means `window.scrollY` is always 0; every place Step 16 read/wrote scroll had to switch to `el("results").scrollTop` (writeURL, the restore in `initialLoad`, and the scroll listener target).
+- **Auto-advance past the loaded set.** `←/→` at the last loaded item sets `lbPending` and triggers a paged fetch; the `renderCards` append path then jumps to `lbPending`.
+
+### What warrants a second pair of eyes
+- The lightbox history model (pushState on open, replaceState on step, popstate sync) — confirm Back/Forward behave (Back from a stepped lightbox returns to the opener entry, then closes).
+- The app-shell on small screens: `.layout` collapses to one column under 720px, giving two stacked scroll panes — usable but desktop-first.
+- The lightbox shows the 480px thumbnail scaled up (slightly soft); "open ▸" gives the crisp live render.
+
+### What should be done in the future
+- If a literal React/React-Router migration is wanted, it's a separate, larger effort; the History-API routing here already makes URLs shareable.
+- Serve a larger thumbnail (or the live iframe) in the lightbox for crispness; add the magnifier to list rows; reload gallery cards after a recapture.
+
+### Code review instructions
+- `index.html`: the `.lightbox`/`.zoom` CSS + markup; `openLightbox`/`showLightbox`/`lbMove`/`closeLightbox`/`galleryURL`/`popstate`; the app-shell CSS (`body`/`.content`/`.layout`/`.facets`/`main`); the `el("results")` scroll switch; `allDocs` in `renderCards`.
+- Validate: 🔍 a card; ←/→; scroll and confirm the sidebar stays; paste a `?gallery=<name>` URL.
+
+### Technical details
+- New URL param: `gallery=<artifact name>` (the lightbox target). Scroll now tracked on `#results`.

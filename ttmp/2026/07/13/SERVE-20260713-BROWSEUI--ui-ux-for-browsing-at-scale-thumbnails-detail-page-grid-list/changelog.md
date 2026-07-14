@@ -44,3 +44,12 @@ Steps 15-16: recapture thumbnail from live view + server re-render (a79f027); UR
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/templates/artifact.html — Thumbnail recapture UI (Step 15)
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/templates/index.html — URL scroll/state restore (Step 16)
 
+
+## 2026-07-14
+
+Steps 17-19: capture shortcut → Ctrl/Cmd+Shift+C (9a5f14e); project UUID→name resolution via projects.json (7beb6af); gallery lightbox+magnifier, fixed chrome/scrollable results, shareable gallery URLs via History API (daaa4ce)
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/index.go — Project name resolution (Step 18)
+
