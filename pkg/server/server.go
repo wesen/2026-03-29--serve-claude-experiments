@@ -33,17 +33,18 @@ var templateFS embed.FS
 
 // Server serves Claude artifacts over HTTP.
 type Server struct {
-	scanner         *artifacts.Scanner
-	index           *searchIndex
-	store           *userdata.Store
-	thumbs          *thumbCache
-	dir             string
-	port            int
-	watch           bool
-	watcher         *watcher
-	precompiled     *precompiledBundle
-	indexTemplate   *template.Template
-	jsxHostTemplate *template.Template
+	scanner          *artifacts.Scanner
+	index            *searchIndex
+	store            *userdata.Store
+	thumbs           *thumbCache
+	dir              string
+	port             int
+	watch            bool
+	watcher          *watcher
+	precompiled      *precompiledBundle
+	indexTemplate    *template.Template
+	jsxHostTemplate  *template.Template
+	artifactTemplate *template.Template
 }
 
 // Config holds server configuration.
@@ -83,6 +84,11 @@ func New(cfg Config) (*Server, error) {
 	jsxHostTmpl, err := template.New("jsx-host.html").ParseFS(templateFS, "templates/jsx-host.html")
 	if err != nil {
 		return nil, fmt.Errorf("parsing jsx-host template: %w", err)
+	}
+
+	artifactTmpl, err := template.New("artifact.html").Funcs(templateFuncs).ParseFS(templateFS, "templates/artifact.html")
+	if err != nil {
+		return nil, fmt.Errorf("parsing artifact template: %w", err)
 	}
 
 	precompiled, err := loadEmbeddedPrecompiledBundle()
@@ -126,17 +132,18 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	return &Server{
-		scanner:         scanner,
-		index:           newSearchIndex(scanner),
-		store:           store,
-		thumbs:          thumbs,
-		dir:             cfg.Dir,
-		port:            cfg.Port,
-		watch:           cfg.Watch,
-		watcher:         w,
-		precompiled:     precompiled,
-		indexTemplate:   indexTmpl,
-		jsxHostTemplate: jsxHostTmpl,
+		scanner:          scanner,
+		index:            newSearchIndex(scanner),
+		store:            store,
+		thumbs:           thumbs,
+		dir:              cfg.Dir,
+		port:             cfg.Port,
+		watch:            cfg.Watch,
+		watcher:          w,
+		precompiled:      precompiled,
+		indexTemplate:    indexTmpl,
+		jsxHostTemplate:  jsxHostTmpl,
+		artifactTemplate: artifactTmpl,
 	}, nil
 }
 
@@ -181,6 +188,9 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /compiled/{name...}", s.handleCompiledJSX)
 	mux.HandleFunc("GET /jsx/{name...}", s.handleJSX)
 	mux.HandleFunc("GET /thumb/{name...}", s.handleThumb)
+	mux.HandleFunc("GET /artifact/{name...}", s.handleArtifactPage)
+	mux.HandleFunc("GET /api/artifact/{name...}", s.handleArtifactJSON)
+	mux.HandleFunc("GET /transcript/{name...}", s.handleTranscript)
 
 	if s.watch && s.watcher != nil {
 		// Rebuild the index whenever the directory changes, before clients reload.
@@ -652,4 +662,83 @@ func (s *Server) backfillThumbnails(ctx context.Context) {
 	if rendered > 0 {
 		log.Printf("thumbnail backfill complete: %d rendered", rendered)
 	}
+}
+
+// handleArtifactJSON returns a single artifact's SearchDocument (enriched with
+// the acting user's favorite/tags and render status) plus transcript
+// availability and warnings, for the detail page.
+func (s *Server) handleArtifactJSON(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	art, err := s.scanner.FindByName(name)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	doc := buildSearchDocument(*art)
+	if hash, ok := s.index.hashByName(name); ok {
+		doc.Hash = hash
+		if s.thumbs != nil {
+			if okr, known := s.thumbs.renderStatus(hash); known {
+				doc.RenderOK = &okr
+			}
+		}
+	}
+	user := currentUser(r)
+	doc.Favorite, _ = s.store.IsFavorite(user, name)
+	userTags, _ := s.store.TagsFor(user, name)
+	doc.UserTags = userTags
+	doc.Tags = mergeTags(art.Tags, userTags)
+	writeJSON(w, map[string]any{
+		"artifact":       doc,
+		"has_transcript": art.TranscriptPath != "",
+		"claude_url":     art.ClaudeURL,
+		"warnings":       art.Warnings,
+		"size":           art.Size,
+		"project":        art.Project,
+		"created_at":     art.ConversationCreatedAt,
+	})
+}
+
+// mergeTags returns manifest tags plus user tags, deduped case-insensitively.
+func mergeTags(manifest, user []string) []string {
+	out := append([]string(nil), manifest...)
+	for _, t := range user {
+		if !containsFold(out, t) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// handleTranscript serves the local conversation.md transcript for an artifact,
+// if one was ingested from the export. Returns 404 when no transcript is present.
+func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	art, err := s.scanner.FindByName(name)
+	if err != nil || art.TranscriptPath == "" {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	http.ServeFile(w, r, art.TranscriptPath)
+}
+
+// handleArtifactPage renders the detail page for one artifact: a live preview
+// (iframe of /view) plus a metadata panel and highlighted source. All dynamic
+// data is fetched client-side from /api/artifact and /raw so the page reuses the
+// same enrichment the search results use.
+func (s *Server) handleArtifactPage(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	art, err := s.scanner.FindByName(name)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	s.artifactTemplate.Execute(w, map[string]interface{}{
+		"Name":  art.Name,
+		"Title": art.Title,
+		"Type":  art.Type,
+		"Watch": s.watch,
+	})
 }

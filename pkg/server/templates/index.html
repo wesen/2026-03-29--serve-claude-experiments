@@ -223,12 +223,13 @@
       if (state.collection) links += " <a href='javascript:void(0)' class='rmcol'>− remove</a>";
       var opts = "<option value=''>＋ collection…</option>" + collections.map(function(c2){ return "<option value='"+c2.id+"'>"+esc(c2.name)+"</option>"; }).join("");
       var userTags = (d.user_tags||[]).map(function(t){ return "<span class='utag' data-tag='"+esc(t)+"'>"+esc(t)+"<b class='x' title='remove'>×</b></span>"; }).join("");
-      var thumb = "<a class='thumb-wrap skeleton' href='"+esc(d.view_url)+"' title='"+esc(d.title||d.name)+"'>" +
-        "<img class='thumb' loading='lazy' alt='' src='/thumb/"+encodeURI(d.name)+"'></a>";
+      var detailURL = "/artifact/" + d.name.split("/").map(encodeURIComponent).join("/");
+      var thumb = "<a class='thumb-wrap skeleton' href='"+esc(detailURL)+"' title='"+esc(d.title||d.name)+"'>" +
+        "<img class='thumb' loading='lazy' alt='' src='/thumb/"+d.name.split("/").map(encodeURIComponent).join("/")+"'></a>";
       c.innerHTML =
         thumb +
         "<div class='badges'>"+star+badges+"</div>" +
-        "<a class='card-title' href='"+esc(d.view_url)+"'>"+esc(d.title||d.name)+"</a>" +
+        "<a class='card-title' href='"+esc(detailURL)+"'>"+esc(d.title||d.name)+"</a>" +
         (d.description?"<div class='meta'>"+esc(d.description)+"</div>":"") +
         (d.updated_at?"<div class='meta'>"+esc(d.updated_at.slice(0,10))+"</div>":"") +
         (tags?"<div class='tags'>"+tags+"</div>":"") +
