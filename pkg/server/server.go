@@ -2,6 +2,7 @@ package server
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -22,6 +24,8 @@ import (
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/go-go-golems/serve-artifacts/pkg/artifacts"
 	"github.com/go-go-golems/serve-artifacts/pkg/userdata"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 )
 
 // DefaultUserID is the single hardcoded account used until a real identity
@@ -39,18 +43,20 @@ var templateFS embed.FS
 
 // Server serves Claude artifacts over HTTP.
 type Server struct {
-	scanner          *artifacts.Scanner
-	index            *searchIndex
-	store            *userdata.Store
-	thumbs           *thumbCache
-	dir              string
-	port             int
-	watch            bool
-	watcher          *watcher
-	precompiled      *precompiledBundle
-	indexTemplate    *template.Template
-	jsxHostTemplate  *template.Template
-	artifactTemplate *template.Template
+	scanner            *artifacts.Scanner
+	index              *searchIndex
+	store              *userdata.Store
+	thumbs             *thumbCache
+	dir                string
+	port               int
+	watch              bool
+	watcher            *watcher
+	precompiled        *precompiledBundle
+	indexTemplate      *template.Template
+	jsxHostTemplate    *template.Template
+	artifactTemplate   *template.Template
+	transcriptTemplate *template.Template
+	markdown           goldmark.Markdown
 }
 
 // Config holds server configuration.
@@ -98,6 +104,11 @@ func New(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("parsing artifact template: %w", err)
 	}
 
+	transcriptTmpl, err := template.New("transcript.html").ParseFS(templateFS, "templates/transcript.html")
+	if err != nil {
+		return nil, fmt.Errorf("parsing transcript template: %w", err)
+	}
+
 	precompiled, err := loadEmbeddedPrecompiledBundle()
 	if err != nil {
 		return nil, err
@@ -139,18 +150,20 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	return &Server{
-		scanner:          scanner,
-		index:            newSearchIndex(scanner),
-		store:            store,
-		thumbs:           thumbs,
-		dir:              cfg.Dir,
-		port:             cfg.Port,
-		watch:            cfg.Watch,
-		watcher:          w,
-		precompiled:      precompiled,
-		indexTemplate:    indexTmpl,
-		jsxHostTemplate:  jsxHostTmpl,
-		artifactTemplate: artifactTmpl,
+		scanner:            scanner,
+		index:              newSearchIndex(scanner),
+		store:              store,
+		thumbs:             thumbs,
+		dir:                cfg.Dir,
+		port:               cfg.Port,
+		watch:              cfg.Watch,
+		watcher:            w,
+		precompiled:        precompiled,
+		indexTemplate:      indexTmpl,
+		jsxHostTemplate:    jsxHostTmpl,
+		artifactTemplate:   artifactTmpl,
+		transcriptTemplate: transcriptTmpl,
+		markdown:           goldmark.New(goldmark.WithExtensions(extension.GFM)),
 	}, nil
 }
 
@@ -725,8 +738,8 @@ func mergeTags(manifest, user []string) []string {
 	return out
 }
 
-// handleTranscript serves the local conversation.md transcript for an artifact,
-// if one was ingested from the export. Returns 404 when no transcript is present.
+// handleTranscript renders the ingested conversation.md transcript to a readable
+// HTML page (markdown via goldmark, GFM). Returns 404 when no transcript exists.
 func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	art, err := s.scanner.FindByName(name)
@@ -734,8 +747,39 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-	http.ServeFile(w, r, art.TranscriptPath)
+	src, err := os.ReadFile(art.TranscriptPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var body bytes.Buffer
+	if err := s.markdown.Convert(src, &body); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	title := art.SourceConversationTitle
+	if title == "" {
+		title = art.Title
+	}
+	enc := encodePathSegments(art.Name)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	s.transcriptTemplate.Execute(w, map[string]interface{}{
+		"Title":     title,
+		"Body":      template.HTML(body.String()), //nolint:gosec // goldmark output, raw HTML not enabled
+		"DetailURL": "/artifact/" + enc,
+		"Enc":       enc,
+	})
+}
+
+// encodePathSegments URL-escapes each slash-separated segment of an artifact
+// name so it can be placed in a URL path (spaces and other characters are
+// escaped, but the slashes that separate segments are preserved).
+func encodePathSegments(name string) string {
+	parts := strings.Split(name, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	return strings.Join(parts, "/")
 }
 
 // handleHighlight returns the artifact's source as a self-contained,
