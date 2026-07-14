@@ -237,6 +237,7 @@ func defaultThumbConcurrency() int {
 // reused across renders (each render opens a fresh tab). It captures console
 // errors and uncaught exceptions to compute renderOK.
 type chromedpEngine struct {
+	noSandbox   bool
 	allocCtx    context.Context
 	cancelAlloc context.CancelFunc
 	browserCtx  context.Context
@@ -247,7 +248,11 @@ type chromedpEngine struct {
 
 // newChromedpEngine constructs the engine but does not launch Chrome until the
 // first Render (so a server with no thumbnails requested never spawns a browser).
-func newChromedpEngine() *chromedpEngine { return &chromedpEngine{} }
+// noSandbox adds --no-sandbox, which is required to run Chrome as root inside a
+// container; leave it off on a normal host so the sandbox stays enabled.
+func newChromedpEngine(noSandbox bool) *chromedpEngine {
+	return &chromedpEngine{noSandbox: noSandbox}
+}
 
 func (e *chromedpEngine) start() error {
 	e.startOnce.Do(func() {
@@ -255,8 +260,14 @@ func (e *chromedpEngine) start() error {
 			chromedp.Flag("headless", true),
 			chromedp.Flag("disable-gpu", true),
 			chromedp.Flag("hide-scrollbars", true),
+			// /dev/shm is only 64 MB by default in containers; without this Chrome
+			// crashes on larger pages. Harmless on a normal host.
+			chromedp.Flag("disable-dev-shm-usage", true),
 			chromedp.WindowSize(thumbRenderW, thumbRenderH),
 		)
+		if e.noSandbox {
+			opts = append(opts, chromedp.NoSandbox)
+		}
 		e.allocCtx, e.cancelAlloc = chromedp.NewExecAllocator(context.Background(), opts...)
 		e.browserCtx, e.cancelBrow = chromedp.NewContext(e.allocCtx)
 		// Force the browser to actually start so a missing binary fails fast.

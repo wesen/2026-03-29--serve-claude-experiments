@@ -49,12 +49,13 @@ type Server struct {
 
 // Config holds server configuration.
 type Config struct {
-	Dir       string
-	Port      int
-	Watch     bool
-	DBPath    string // SQLite path for user data; empty = default under the config dir
-	ThumbsDir string // thumbnail cache dir; empty = default under the user cache dir
-	NoThumbs  bool   // disable thumbnail generation entirely
+	Dir             string
+	Port            int
+	Watch           bool
+	DBPath          string // SQLite path for user data; empty = default under the config dir
+	ThumbsDir       string // thumbnail cache dir; empty = default under the user cache dir
+	NoThumbs        bool   // disable thumbnail generation entirely
+	ChromeNoSandbox bool   // add --no-sandbox (required to render as root in a container)
 }
 
 var templateFuncs = template.FuncMap{
@@ -124,7 +125,7 @@ func New(cfg Config) (*Server, error) {
 			thumbsDir = defaultThumbsDir()
 		}
 		baseURL := fmt.Sprintf("http://localhost:%d", cfg.Port)
-		thumbs, err = newThumbCache(thumbsDir, baseURL, newChromedpEngine(), defaultThumbConcurrency())
+		thumbs, err = newThumbCache(thumbsDir, baseURL, newChromedpEngine(cfg.ChromeNoSandbox), defaultThumbConcurrency())
 		if err != nil {
 			return nil, err
 		}

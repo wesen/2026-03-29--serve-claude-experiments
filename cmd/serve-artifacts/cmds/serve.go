@@ -1,6 +1,8 @@
 package cmds
 
 import (
+	"os"
+
 	"github.com/go-go-golems/serve-artifacts/pkg/server"
 	"github.com/spf13/cobra"
 )
@@ -12,6 +14,9 @@ func NewServeCmd() *cobra.Command {
 	var db string
 	var thumbs string
 	var noThumbs bool
+	// Default from the environment so a container can enable it without changing
+	// the command line (Chrome needs --no-sandbox when running as root).
+	noSandbox := os.Getenv("SERVE_ARTIFACTS_CHROME_NO_SANDBOX") == "1"
 
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -31,12 +36,13 @@ Examples:
   serve-artifacts serve --dir ~/claude-artifacts --watch`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := server.Config{
-				Dir:       dir,
-				Port:      port,
-				Watch:     watch,
-				DBPath:    db,
-				ThumbsDir: thumbs,
-				NoThumbs:  noThumbs,
+				Dir:             dir,
+				Port:            port,
+				Watch:           watch,
+				DBPath:          db,
+				ThumbsDir:       thumbs,
+				NoThumbs:        noThumbs,
+				ChromeNoSandbox: noSandbox,
 			}
 			srv, err := server.New(cfg)
 			if err != nil {
@@ -52,6 +58,7 @@ Examples:
 	cmd.Flags().StringVar(&db, "db", "", "SQLite database for favorites/tags/collections (default: user config dir)")
 	cmd.Flags().StringVar(&thumbs, "thumbs", "", "Thumbnail cache directory (default: user cache dir)")
 	cmd.Flags().BoolVar(&noThumbs, "no-thumbnails", false, "Disable thumbnail generation (no headless Chrome)")
+	cmd.Flags().BoolVar(&noSandbox, "chrome-no-sandbox", noSandbox, "Run headless Chrome with --no-sandbox (needed to render as root in a container)")
 
 	return cmd
 }
