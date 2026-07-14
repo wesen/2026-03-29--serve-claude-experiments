@@ -22,6 +22,7 @@ type SearchDocument struct {
 	UpdatedAt     string   `json:"updated_at,omitempty"`
 	WarningsCount int      `json:"warnings_count"`
 	Favorite      bool     `json:"favorite"`
+	UserTags      []string `json:"user_tags,omitempty"`
 }
 
 func buildSearchDocument(a artifacts.Artifact) SearchDocument {

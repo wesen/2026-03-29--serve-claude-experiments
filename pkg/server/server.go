@@ -149,6 +149,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /search-index.json", s.handleSearchIndex)
 	mux.HandleFunc("GET /search", s.handleSearch)
 	mux.HandleFunc("POST /api/favorite", s.handleFavorite)
+	mux.HandleFunc("POST /api/tags/add", s.handleTagAdd)
+	mux.HandleFunc("POST /api/tags/remove", s.handleTagRemove)
 	// {name...} matches multi-segment names so artifacts in nested subdirectories
 	// (e.g. "<uuid>/artifacts/Calendar") resolve.
 	mux.HandleFunc("GET /view/{name...}", s.handleView)
@@ -276,6 +278,34 @@ func (s *Server) handleFavorite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"key": key, "favorite": on})
+}
+
+// handleTagAdd / handleTagRemove add or remove a user tag on an artifact.
+// POST /api/tags/add|remove?key=&tag=
+func (s *Server) handleTagAdd(w http.ResponseWriter, r *http.Request) { s.tagOp(w, r, true) }
+
+func (s *Server) handleTagRemove(w http.ResponseWriter, r *http.Request) { s.tagOp(w, r, false) }
+
+func (s *Server) tagOp(w http.ResponseWriter, r *http.Request, add bool) {
+	key := r.FormValue("key")
+	tag := strings.TrimSpace(r.FormValue("tag"))
+	if key == "" || tag == "" {
+		http.Error(w, "key and tag required", http.StatusBadRequest)
+		return
+	}
+	user := currentUser(r)
+	var err error
+	if add {
+		err = s.store.AddTag(user, key, tag)
+	} else {
+		err = s.store.RemoveTag(user, key, tag)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	tags, _ := s.store.TagsFor(user, key)
+	writeJSON(w, map[string]any{"key": key, "tags": tags})
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

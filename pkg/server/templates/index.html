@@ -46,6 +46,10 @@
   .tag:hover { background: #000; color: #fff; }
   .star { cursor: pointer; font-size: 15px; line-height: 1; color: #999; margin-right: 2px; user-select: none; }
   .star.on { color: #e0a400; }
+  .tag-editor { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+  .utag { font-size: 10px; background: #eef6ff; border: 1px solid #7ab; padding: 0 3px; display: inline-flex; align-items: center; gap: 2px; }
+  .utag .x { cursor: pointer; color: #b00; font-weight: bold; }
+  .addtag { font-size: 10px; width: 60px; border: 1px dashed #999; padding: 0 3px; background: #fff; }
   .links { display: flex; gap: 8px; font-size: 10px; margin-top: 2px; }
   .links a { color: #333; }
   .more { margin: 16px auto 0; display: block; font: inherit; padding: 6px 16px; border: 2px solid #000; background: #fff; box-shadow: 2px 2px 0 #000; cursor: pointer; }
@@ -144,6 +148,13 @@
       });
   }
 
+  function tagOp(op, key, tag){
+    var body = new URLSearchParams(); body.set("key", key); body.set("tag", tag);
+    fetch("/api/tags/"+op, { method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:body })
+      .then(function(r){ return r.json(); })
+      .then(function(){ reload(); });
+  }
+
   function renderCards(results, append){
     var grid = el("grid");
     if (!append) grid.innerHTML = "";
@@ -157,15 +168,21 @@
       var tags = (d.tags||[]).map(function(t){ return "<span class='tag' data-tag='"+esc(t)+"'>"+esc(t)+"</span>"; }).join("");
       var links = "<a href='"+esc(d.view_url)+"'>view</a>";
       if (d.source_uuid) links += " <a href='https://claude.ai/chat/"+esc(d.source_uuid)+"' target='_blank'>claude.ai</a>";
+      var userTags = (d.user_tags||[]).map(function(t){ return "<span class='utag' data-tag='"+esc(t)+"'>"+esc(t)+"<b class='x' title='remove'>×</b></span>"; }).join("");
       c.innerHTML =
         "<div class='badges'>"+star+badges+"</div>" +
         "<a class='card-title' href='"+esc(d.view_url)+"'>"+esc(d.title||d.name)+"</a>" +
         (d.description?"<div class='meta'>"+esc(d.description)+"</div>":"") +
         (d.updated_at?"<div class='meta'>"+esc(d.updated_at.slice(0,10))+"</div>":"") +
         (tags?"<div class='tags'>"+tags+"</div>":"") +
+        "<div class='tag-editor'>"+userTags+"<input class='addtag' type='text' placeholder='+tag' />" +
+        "</div>" +
         "<div class='links'>"+links+"</div>";
       c.querySelectorAll(".tag").forEach(function(tn){ tn.onclick = function(e){ e.preventDefault(); toggleFacet("tag", tn.getAttribute("data-tag")); }; });
       c.querySelector(".star").onclick = function(){ toggleFavorite(d.name, c); };
+      c.querySelectorAll(".utag .x").forEach(function(xb){ xb.onclick = function(){ tagOp("remove", d.name, xb.parentNode.getAttribute("data-tag")); }; });
+      var addInput = c.querySelector(".addtag");
+      addInput.addEventListener("keydown", function(e){ if(e.key==="Enter" && addInput.value.trim()){ tagOp("add", d.name, addInput.value.trim()); } });
       grid.appendChild(c);
     });
     el("more").style.display = (state.offset + PAGE < lastTotal) ? "block" : "none";

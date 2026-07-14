@@ -233,6 +233,7 @@ func (ix *searchIndex) search(q searchQuery, uv userView) searchResult {
 		d := buildSearchDocument(e.art)
 		d.Favorite = uv.favorites[e.art.Name]
 		d.Tags = e.mergedTags(uv)
+		d.UserTags = append([]string(nil), uv.tags[e.art.Name]...)
 		docs = append(docs, d)
 	}
 	return searchResult{Total: total, Results: docs, Facets: facets}
