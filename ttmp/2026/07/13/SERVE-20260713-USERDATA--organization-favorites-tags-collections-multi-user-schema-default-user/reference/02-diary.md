@@ -168,3 +168,55 @@ it in, which is what keeps multi-user correct later.
 ### Technical details
 - `POST /api/favorite?key=&on=true|false` (omit `on` to toggle) → `{key, favorite}`.
 - `/search` gains `favorite=true` and `collection=<id>`; response `facets.favorite.true` is the favorites count.
+
+## Step 4: User tags (task 3)
+
+Added per-user tags on top of the tag-merging already wired for search in task 2.
+The new surface is the add/remove API and a card tag editor. User tags are
+returned separately (`user_tags`) from the merged `tags` (manifest ∪ user) so the
+UI can offer removable chips for the user's own tags while the merged set still
+drives the tag facet and filter.
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 1)
+
+**Assistant interpretation:** Implement user tags (task 3): add/remove endpoints and a per-card tag editor; ensure user tags are searchable/facetable (already merged in task 2).
+
+**Inferred user intent:** Let the user annotate artifacts with their own tags and filter by them.
+
+**Commit (code):** 89e9620 — "feat: user tags (SERVE-20260713-USERDATA task 3)"
+
+### What I did
+- `pkg/server/search.go`: `SearchDocument.UserTags`.
+- `pkg/server/index.go`: `search` sets `d.UserTags` from the user view (merged `Tags` already set in task 2).
+- `pkg/server/server.go`: `POST /api/tags/add` and `/api/tags/remove` (`tagOp`) returning the artifact's user tags.
+- `templates/index.html`: card tag editor — user tags as removable `× chip`s, a `+tag` input (Enter to add), `tagOp()` helper, CSS.
+
+### Why
+- Manifest tags are read-only (from files); users need their own mutable tags, and those should participate in the same search/facets.
+
+### What worked
+- API: add `starred`,`demo` → `/search?tag=starred` returns 1 with facet count and `user_tags`; remove `demo` leaves `starred`.
+- UI: `+tag` input adds a chip; `×` removes it (verified in-browser).
+- `go test ./...` green.
+
+### What didn't work
+- N/A.
+
+### What was tricky to build
+- Distinguishing user tags from manifest tags in the UI. The merged `tags` list can't tell them apart, so removal would wrongly offer to delete manifest tags. Solution: return `user_tags` separately and render only those as removable, while `tags` (merged) remains the filter/facet surface.
+
+### What warrants a second pair of eyes
+- Whether add/remove should update the card in place rather than `reload()` (current choice reloads to keep tag-facet counts correct).
+
+### What should be done in the future
+- Tag autocomplete from the user's existing tags (`AllTags`).
+
+### Code review instructions
+- `server.go` (`tagOp`), `index.go` (`UserTags` set), template card tag editor.
+- Validate: `curl -X POST /api/tags/add -d key=... -d tag=x`; `curl '/search?tag=x'`.
+
+### Technical details
+- `POST /api/tags/add|remove?key=&tag=` → `{key, tags:[user tags]}`.
+- Results: `user_tags` (the user's) and `tags` (manifest ∪ user, deduped).
