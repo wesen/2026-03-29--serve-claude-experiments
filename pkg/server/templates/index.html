@@ -6,22 +6,27 @@
 <title>Claude Artifact Server</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
   body {
     font-family: 'Geneva', 'Helvetica Neue', Helvetica, sans-serif;
     font-size: 13px;
     background: #fff;
-    min-height: 100vh;
+    overflow: hidden; /* the app is a fixed-header shell; the results pane scrolls, not the window */
   }
-  .content { max-width: 1200px; margin: 0 auto; padding: 20px; }
-  .content h1 { font-size: 16px; margin-bottom: 2px; }
-  .subtitle { color: #666; margin-bottom: 12px; font-size: 11px; }
-  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  /* App shell: header (title + filter bar) stays put; only .layout (and within it,
+     the results pane and the facet sidebar) scroll. */
+  .content { max-width: 1200px; margin: 0 auto; padding: 20px 20px 0; height: 100vh; display: flex; flex-direction: column; }
+  .content h1 { font-size: 16px; margin-bottom: 2px; flex: none; }
+  .subtitle { color: #666; margin-bottom: 12px; font-size: 11px; flex: none; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; flex: none; }
   .search-input {
     flex: 1; min-width: 220px; font: inherit; padding: 6px 10px; border: 2px solid #000; background: #fff;
   }
   select { font: inherit; padding: 5px 6px; border: 2px solid #000; background: #fff; }
   .count { font-size: 11px; color: #333; white-space: nowrap; }
-  .layout { display: grid; grid-template-columns: 200px 1fr; gap: 18px; }
+  .layout { display: grid; grid-template-columns: 200px 1fr; gap: 18px; flex: 1; min-height: 0; }
+  .facets { overflow-y: auto; padding-bottom: 20px; }
+  main { overflow-y: auto; padding-bottom: 20px; }
   @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
   .facets { border-right: 1px dashed #999; padding-right: 14px; }
   .facet-group { margin-bottom: 14px; }
@@ -38,6 +43,22 @@
   .thumb-wrap.skeleton { background: linear-gradient(90deg,#f2f2f2 25%,#e8e8e8 37%,#f2f2f2 63%); background-size: 400% 100%; animation: shimmer 1.3s ease-in-out infinite; }
   @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
   .thumb { width: 100%; height: 150px; object-fit: cover; object-position: top center; display: block; }
+  .zoom { position: absolute; top: 6px; right: 6px; z-index: 2; background: #fff; border: 1px solid #000; box-shadow: 1px 1px 0 #000; font-size: 12px; line-height: 1; padding: 2px 5px; cursor: pointer; opacity: 0; transition: opacity .12s; }
+  .thumb-wrap:hover .zoom { opacity: 0.92; }
+  .zoom:hover { background: #000; }
+  /* gallery lightbox */
+  .lightbox { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; }
+  .lb-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 16px; color: #fff; font-size: 13px; background: linear-gradient(rgba(0,0,0,0.65), transparent); }
+  .lb-title { font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lb-actions { display: flex; gap: 14px; align-items: center; }
+  .lb-actions a { color: #cfe0ff; text-decoration: none; white-space: nowrap; }
+  .lb-actions a:hover { text-decoration: underline; }
+  .lb-btn { font: inherit; font-size: 16px; background: none; border: none; color: #fff; cursor: pointer; }
+  .lb-img { max-width: 92vw; max-height: 84vh; object-fit: contain; border: 1px solid #333; background: #fff; }
+  .lb-nav { position: absolute; top: 0; bottom: 0; width: 12vw; min-width: 70px; border: none; background: none; color: #fff; font-size: 48px; cursor: pointer; opacity: 0.55; }
+  .lb-nav:hover { opacity: 1; background: rgba(255,255,255,0.06); }
+  .lb-prev { left: 0; } .lb-next { right: 0; }
+  .lb-count { position: absolute; bottom: 12px; color: #ccc; font-size: 12px; }
   .card a.card-title { font-weight: bold; font-size: 13px; text-decoration: none; color: #000; }
   .card a.card-title:hover { text-decoration: underline; }
   .badges { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
@@ -80,7 +101,7 @@
   .empty { padding: 30px; text-align: center; color: #666; }
   .card.selected, .row.selected { outline: 3px solid #2563eb; outline-offset: 1px; }
   /* advanced search panel */
-  .advanced { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 0 0 14px; padding: 8px 10px; border: 2px solid #000; background: #fafafa; font-size: 11px; }
+  .advanced { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 0 0 14px; padding: 8px 10px; border: 2px solid #000; background: #fafafa; font-size: 11px; flex: none; }
   .advanced label { display: flex; gap: 5px; align-items: center; white-space: nowrap; }
   .dateinput { font: inherit; font-size: 11px; padding: 2px 5px; border: 1px solid #000; background: #fff; }
   .syntax-help { color: #555; line-height: 1.7; }
@@ -157,12 +178,27 @@
           <div id="collections"></div>
           <div id="facets"></div>
         </aside>
-        <main>
+        <main id="results">
           <div id="grid" class="grid"></div>
           <button id="more" class="more" style="display:none">Load more</button>
           <div id="empty" class="empty" style="display:none">No artifacts match.</div>
         </main>
       </div>
+  </div>
+
+  <div id="lightbox" class="lightbox" style="display:none">
+    <div class="lb-bar">
+      <span id="lb-title" class="lb-title"></span>
+      <span class="lb-actions">
+        <a id="lb-open" target="_blank">open ▸</a>
+        <a id="lb-detail">details ▸</a>
+        <button id="lb-close" class="lb-btn" title="Close (Esc)">✕</button>
+      </span>
+    </div>
+    <button id="lb-prev" class="lb-nav lb-prev" title="Previous (←)">‹</button>
+    <img id="lb-img" class="lb-img" alt="">
+    <button id="lb-next" class="lb-nav lb-next" title="Next (→)">›</button>
+    <div id="lb-count" class="lb-count"></div>
   </div>
 
   <div id="palette" class="palette-overlay" style="display:none">
@@ -178,6 +214,10 @@
   var state = { q: "", sort: "recent", type: "", project: "", model: "", library: "", warnings: false, favorite: false, collection: 0, tags: [], after: "", before: "", offset: 0, view: "grid" };
   try { var sv = localStorage.getItem("view"); if (sv==="grid"||sv==="list") state.view = sv; } catch(e) {}
   try { history.scrollRestoration = "manual"; } catch(e) {} // we restore scroll ourselves from the URL
+  var allDocs = [];            // every result currently loaded (for the gallery lightbox)
+  var lbIndex = -1;            // index into allDocs of the artifact shown in the lightbox
+  var lbPending = null;        // index to jump to once a lazy "load more" (triggered from the lightbox) appends
+  var initialGallery = null;   // ?gallery=<name> from the URL, opened once results load (shareable deep link)
   var lastTotal = 0;
   var collections = [];
 
@@ -306,12 +346,22 @@
   function renderCards(results, append){
     var grid = el("grid");
     grid.classList.toggle("list", state.view==="list");
-    if (!append) { grid.innerHTML = ""; selIdx = -1; }
+    if (!append) { grid.innerHTML = ""; selIdx = -1; allDocs = results.slice(); }
+    else { allDocs = allDocs.concat(results); }
     el("empty").style.display = (results.length===0 && !append && lastTotal===0) ? "block" : "none";
     results.forEach(function(d){
       grid.appendChild(state.view==="list" ? buildRow(d) : buildCard(d));
     });
     el("more").style.display = (state.offset + PAGE < lastTotal) ? "block" : "none";
+    // If the lightbox asked to advance past the loaded set, a "load more" was
+    // triggered; now that results appended, jump to the pending artifact.
+    if (lbPending != null && lbPending < allDocs.length){ lbIndex = lbPending; lbPending = null; showLightbox(); try { history.replaceState(null, "", galleryURL(allDocs[lbIndex].name)); } catch(e) {} }
+    // Open a shareable ?gallery=<name> deep link once its artifact is loaded.
+    if (initialGallery && !append){
+      var gd = allDocs.filter(function(x){ return x.name === initialGallery; })[0];
+      initialGallery = null;
+      if (gd){ lbIndex = allDocs.indexOf(gd); el("lightbox").style.display = "flex"; showLightbox(); }
+    }
   }
 
   function humanSize(n){ return n>=1048576 ? (n/1048576).toFixed(1)+" MB" : n>=1024 ? (n/1024).toFixed(1)+" KB" : n+" B"; }
@@ -356,7 +406,8 @@
       var userTags = (d.user_tags||[]).map(function(t){ return "<span class='utag' data-tag='"+esc(t)+"'>"+esc(t)+"<b class='x' title='remove'>×</b></span>"; }).join("");
       var detailURL = detailURLFor(d.name);
       var thumb = "<a class='thumb-wrap skeleton' href='"+esc(detailURL)+"' title='"+esc(d.title||d.name)+"'>" +
-        "<img class='thumb' loading='lazy' alt='' src='"+thumbURLFor(d.name)+"'></a>";
+        "<img class='thumb' loading='lazy' alt='' src='"+thumbURLFor(d.name)+"'>" +
+        "<span class='zoom' title='View large (gallery)'>🔍</span></a>";
       c.innerHTML =
         thumb +
         "<div class='badges'>"+star+badges+"</div>" +
@@ -368,6 +419,8 @@
         "</div>" +
         "<div class='links'><span class='lg'>"+leftLinks+"</span><span class='rg'>"+rmLink+"<select class='addcol'>"+opts+"</select></span></div>";
       wireThumb(c);
+      var zoom = c.querySelector(".zoom");
+      if (zoom) zoom.onclick = function(e){ e.preventDefault(); e.stopPropagation(); openLightbox(d); };
       c.querySelectorAll(".tag").forEach(function(tn){ tn.onclick = function(e){ e.preventDefault(); toggleFacet("tag", tn.getAttribute("data-tag")); }; });
       c.querySelector(".star").onclick = function(){ toggleFavorite(d.name, c); };
       c.querySelectorAll(".utag .x").forEach(function(xb){ xb.onclick = function(){ tagOp("remove", d.name, xb.parentNode.getAttribute("data-tag")); }; });
@@ -417,7 +470,8 @@
     state.tags.forEach(function(t){ p.append("tag", t); });
     if (state.view !== "grid") p.set("view", state.view);
     var n = loadedCount(); if (n > PAGE) p.set("n", n);        // how many are loaded
-    var y = Math.round(window.scrollY); if (y > 0) p.set("y", y); // scroll position
+    var y = Math.round(el("results").scrollTop); if (y > 0) p.set("y", y); // scroll within the results pane
+    if (lbOpen() && allDocs[lbIndex]) p.set("gallery", allDocs[lbIndex].name); // keep a shareable lightbox deep link
     var s = p.toString();
     try { history.replaceState(null, "", s ? ("?" + s) : location.pathname); } catch(e) {}
   }
@@ -431,6 +485,7 @@
     state.collection = parseInt(p.get("collection")||"0", 10) || 0;
     if (p.getAll("tag").length) state.tags = p.getAll("tag");
     var v = p.get("view"); if (v === "grid" || v === "list") state.view = v;
+    initialGallery = p.get("gallery") || null;
     return { n: parseInt(p.get("n")||"0", 10) || 0, y: parseInt(p.get("y")||"0", 10) || 0 };
   }
   function reflectControls(){
@@ -451,7 +506,7 @@
         render(data);
         state.offset = Math.max(0, data.results.length - PAGE);
         renderCards(data.results, false);
-        if (restore.y > 0) requestAnimationFrame(function(){ window.scrollTo(0, restore.y); });
+        if (restore.y > 0) requestAnimationFrame(function(){ el("results").scrollTop = restore.y; });
       });
     } else {
       reload();
@@ -532,6 +587,63 @@
     else if(e.key==="Escape"){ closePalette(); }
   });
 
+  // ---- gallery lightbox --------------------------------------------------
+  // Opened by the 🔍 on a thumbnail; shows the artifact's screenshot large and
+  // steps through the loaded results with ←/→ (auto-loading more at the end).
+  function lbOpen(){ return el("lightbox").style.display !== "none"; }
+  // galleryURL returns the current URL with the gallery=<name> param set/removed,
+  // so a lightbox view is a shareable deep link and Back/Forward step through it.
+  function galleryURL(name){
+    var p = new URLSearchParams(location.search);
+    if (name) p.set("gallery", name); else p.delete("gallery");
+    var s = p.toString();
+    return s ? ("?" + s) : location.pathname;
+  }
+  function openLightbox(d){
+    lbIndex = allDocs.findIndex(function(x){ return x.name === d.name; });
+    if (lbIndex < 0){ allDocs = [d]; lbIndex = 0; }
+    el("lightbox").style.display = "flex";
+    showLightbox();
+    try { history.pushState(null, "", galleryURL(d.name)); } catch(e) {} // Back closes the lightbox
+  }
+  function showLightbox(){
+    var d = allDocs[lbIndex]; if (!d) return;
+    el("lb-img").src = thumbURLFor(d.name);
+    el("lb-title").textContent = d.title || d.name;
+    el("lb-open").href = "/view/" + d.name.split("/").map(encodeURIComponent).join("/");
+    el("lb-detail").href = detailURLFor(d.name);
+    el("lb-count").textContent = (lbIndex + 1) + " / " + allDocs.length + (state.q||anyFilter() ? " (filtered)" : "");
+    el("lb-prev").style.visibility = lbIndex > 0 ? "visible" : "hidden";
+    el("lb-next").style.visibility = (lbIndex < allDocs.length - 1 || el("more").style.display !== "none") ? "visible" : "hidden";
+  }
+  function lbMove(delta){
+    var i = lbIndex + delta;
+    if (i < 0) return;
+    if (i >= allDocs.length){
+      if (el("more").style.display !== "none"){ lbPending = i; state.offset += PAGE; fetchPage(true); } // load more, then advance
+      return;
+    }
+    lbIndex = i; showLightbox();
+    try { history.replaceState(null, "", galleryURL(allDocs[lbIndex].name)); } catch(e) {}
+  }
+  function closeLightbox(){ el("lightbox").style.display = "none"; try { history.replaceState(null, "", galleryURL(null)); } catch(e) {} }
+  el("lb-prev").onclick = function(){ lbMove(-1); };
+  el("lb-next").onclick = function(){ lbMove(1); };
+  el("lb-close").onclick = closeLightbox;
+  el("lightbox").addEventListener("click", function(e){ if (e.target === el("lightbox")) closeLightbox(); });
+  document.addEventListener("keydown", function(e){
+    if (!lbOpen()) return;
+    if (e.key === "ArrowLeft"){ e.preventDefault(); lbMove(-1); }
+    else if (e.key === "ArrowRight"){ e.preventDefault(); lbMove(1); }
+    else if (e.key === "Escape"){ closeLightbox(); }
+  });
+  // Back/Forward drive the lightbox: gallery param present -> open at it, absent -> close.
+  window.addEventListener("popstate", function(){
+    var g = new URLSearchParams(location.search).get("gallery");
+    if (g){ var i = allDocs.findIndex(function(x){ return x.name === g; }); if (i >= 0){ lbIndex = i; el("lightbox").style.display = "flex"; showLightbox(); } }
+    else if (lbOpen()){ el("lightbox").style.display = "none"; }
+  });
+
   // ---- keyboard navigation ----------------------------------------------
   var selIdx = -1;
   function gridItems(){ return Array.prototype.slice.call(el("grid").children); }
@@ -543,6 +655,7 @@
     it[selIdx].scrollIntoView({block:"nearest"});
   }
   document.addEventListener("keydown", function(e){
+    if(lbOpen()) return; // the lightbox has its own ←/→/Esc handler
     if((e.key==="k"||e.key==="K") && (e.metaKey||e.ctrlKey)){ e.preventDefault(); openPalette(); return; }
     var tag = (e.target.tagName||"").toLowerCase();
     if(tag==="input"||tag==="select"||tag==="textarea"||isPaletteOpen()) return;
@@ -557,7 +670,7 @@
   // Keep the URL's scroll position current (throttled), and flush it right before
   // a card navigation so Back returns to the exact spot.
   var scrollTimer;
-  window.addEventListener("scroll", function(){ clearTimeout(scrollTimer); scrollTimer = setTimeout(writeURL, 150); }, { passive: true });
+  el("results").addEventListener("scroll", function(){ clearTimeout(scrollTimer); scrollTimer = setTimeout(writeURL, 150); }, { passive: true });
   el("grid").addEventListener("click", function(){ writeURL(); }, true);
 
   loadCollections();
