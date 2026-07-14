@@ -85,9 +85,27 @@ func (c *thumbCache) pathFor(hash string) string {
 	return filepath.Join(c.dir, hash+"-"+renderEnvVersion+".png")
 }
 
+// fullPathFor is the full-resolution capture (what the lightbox shows); the
+// small thumbnail is downscaled from it.
+func (c *thumbCache) fullPathFor(hash string) string {
+	return filepath.Join(c.dir, hash+"-"+renderEnvVersion+"-full.png")
+}
+
+// pathForKind returns the thumbnail or full-res path.
+func (c *thumbCache) pathForKind(hash string, full bool) string {
+	if full {
+		return c.fullPathFor(hash)
+	}
+	return c.pathFor(hash)
+}
+
 // etag is the HTTP ETag for a thumbnail: the content hash plus the render-env
-// version, so a render-environment change forces browsers to refetch.
-func (c *thumbCache) etag(hash string) string {
+// version (and a suffix for the full-res variant), so a render-environment
+// change forces browsers to refetch.
+func (c *thumbCache) etag(hash string, full bool) string {
+	if full {
+		return `"` + hash + "-" + renderEnvVersion + `-full"`
+	}
 	return `"` + hash + "-" + renderEnvVersion + `"`
 }
 
@@ -112,6 +130,10 @@ func (c *thumbCache) saveUploaded(hash string, data []byte) error {
 	if err != nil {
 		small = data
 	}
+	// The uploaded image is the full-res version; store both.
+	if err := writeFileAtomic(c.fullPathFor(hash), data); err != nil {
+		return err
+	}
 	if err := writeFileAtomic(c.pathFor(hash), small); err != nil {
 		return err
 	}
@@ -121,28 +143,37 @@ func (c *thumbCache) saveUploaded(hash string, data []byte) error {
 	return nil
 }
 
-// invalidate removes the cached thumbnail for a hash so the next request (or an
-// explicit get) regenerates it from a fresh render.
+// invalidate removes the cached thumbnail (both variants) for a hash so the next
+// request (or an explicit get) regenerates from a fresh render.
 func (c *thumbCache) invalidate(hash string) error {
 	c.mu.Lock()
 	delete(c.renderOK, hash)
 	c.mu.Unlock()
-	if err := os.Remove(c.pathFor(hash)); err != nil && !os.IsNotExist(err) {
-		return err
+	for _, p := range []string{c.pathFor(hash), c.fullPathFor(hash)} {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return err
+		}
 	}
 	return nil
 }
 
-// get returns the thumbnail bytes for (name, hash), generating and caching them
-// on first request. Concurrent callers for the same hash share one render.
-func (c *thumbCache) get(ctx context.Context, name, hash string) ([]byte, error) {
-	if p, ok := c.cachedPath(hash); ok {
-		return os.ReadFile(p)
+// get returns the thumbnail bytes for (name, hash) — the small variant by
+// default, or the full-resolution capture when full is true. A single render
+// produces both files, so the lightbox's full-res request also refreshes the
+// thumbnail (and vice versa). Concurrent callers for the same hash share one
+// render.
+func (c *thumbCache) get(ctx context.Context, name, hash string, full bool) ([]byte, error) {
+	want := c.pathForKind(hash, full)
+	if b, err := os.ReadFile(want); err == nil {
+		return b, nil
 	}
-	v, err, _ := c.sf.Do(hash, func() (interface{}, error) {
-		// Re-check inside the flight: a prior duplicate may have just written it.
-		if p, ok := c.cachedPath(hash); ok {
-			return os.ReadFile(p)
+	_, err, _ := c.sf.Do(hash, func() (interface{}, error) {
+		// Render only if either variant is missing (a prior duplicate may have
+		// just written them, or only the small one exists from an older render).
+		_, e1 := os.Stat(c.pathFor(hash))
+		_, e2 := os.Stat(c.fullPathFor(hash))
+		if e1 == nil && e2 == nil {
+			return nil, nil
 		}
 		select {
 		case c.sem <- struct{}{}:
@@ -153,13 +184,16 @@ func (c *thumbCache) get(ctx context.Context, name, hash string) ([]byte, error)
 		viewURL := c.baseURL + "/view/" + name
 		rctx, cancel := context.WithTimeout(ctx, renderTimeout)
 		defer cancel()
-		full, ok, rerr := c.engine.Render(rctx, viewURL, hash)
+		fullPNG, ok, rerr := c.engine.Render(rctx, viewURL, hash)
 		if rerr != nil {
 			return nil, rerr
 		}
-		small, derr := downscalePNG(full, thumbWidth)
+		small, derr := downscalePNG(fullPNG, thumbWidth)
 		if derr != nil {
-			small = full // fall back to the full-size capture
+			small = fullPNG // fall back to the full-size capture
+		}
+		if werr := writeFileAtomic(c.fullPathFor(hash), fullPNG); werr != nil {
+			log.Printf("thumbnail: write full %s: %v", hash, werr)
 		}
 		if werr := writeFileAtomic(c.pathFor(hash), small); werr != nil {
 			log.Printf("thumbnail: write %s: %v", hash, werr)
@@ -167,12 +201,12 @@ func (c *thumbCache) get(ctx context.Context, name, hash string) ([]byte, error)
 		c.mu.Lock()
 		c.renderOK[hash] = ok
 		c.mu.Unlock()
-		return small, nil
+		return nil, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return v.([]byte), nil
+	return os.ReadFile(want)
 }
 
 // renderStatus reports the mounted-cleanly bit for a hash, if it was rendered

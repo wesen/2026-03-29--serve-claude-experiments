@@ -53,7 +53,7 @@ func TestThumbCacheGeneratesOnceThenServesFromDisk(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	b1, err := c.get(ctx, "foo/bar", "hash1")
+	b1, err := c.get(ctx, "foo/bar", "hash1", false)
 	if err != nil {
 		t.Fatalf("first get: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestThumbCacheGeneratesOnceThenServesFromDisk(t *testing.T) {
 		t.Fatal("empty thumbnail")
 	}
 	// Second call for the same hash must not render again (disk cache hit).
-	if _, err := c.get(ctx, "foo/bar", "hash1"); err != nil {
+	if _, err := c.get(ctx, "foo/bar", "hash1", false); err != nil {
 		t.Fatalf("second get: %v", err)
 	}
 	if got := eng.calls.Load(); got != 1 {
@@ -96,7 +96,7 @@ func TestThumbCacheSingleflightCollapsesConcurrentRenders(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			_, _ = c.get(ctx, "same/name", "sharedhash")
+			_, _ = c.get(ctx, "same/name", "sharedhash", false)
 		}()
 	}
 	// Let goroutines pile up on the single flight, then release the render.
@@ -116,7 +116,7 @@ func TestThumbCacheRenderErrorPropagates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.get(context.Background(), "n", "h"); err == nil {
+	if _, err := c.get(context.Background(), "n", "h", false); err == nil {
 		t.Fatal("expected error from failing render")
 	}
 	// A failed render writes nothing, so a later successful engine can retry.

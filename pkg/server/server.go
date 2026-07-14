@@ -667,6 +667,7 @@ func (s *Server) handleThumb(w http.ResponseWriter, r *http.Request) {
 		servePlaceholderThumb(w)
 		return
 	}
+	full := r.URL.Query().Get("full") == "1" // the lightbox requests the full-res capture
 	hash, ok := s.index.hashByName(name)
 	if !ok {
 		// The index may not yet know a just-added artifact; hash from disk.
@@ -682,12 +683,12 @@ func (s *Server) handleThumb(w http.ResponseWriter, r *http.Request) {
 		}
 		hash = contentHash(string(b))
 	}
-	etag := s.thumbs.etag(hash)
+	etag := s.thumbs.etag(hash, full)
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	png, err := s.thumbs.get(r.Context(), name, hash)
+	png, err := s.thumbs.get(r.Context(), name, hash, full)
 	if err != nil {
 		log.Printf("thumbnail %s: %v", name, err)
 		servePlaceholderThumb(w)
@@ -766,7 +767,7 @@ func (s *Server) handleThumbRerender(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if _, err := s.thumbs.get(r.Context(), name, hash); err != nil {
+	if _, err := s.thumbs.get(r.Context(), name, hash, false); err != nil {
 		writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
@@ -797,7 +798,7 @@ func (s *Server) backfillThumbnails(ctx context.Context) {
 		if _, cached := s.thumbs.cachedPath(hash); cached {
 			continue
 		}
-		if _, err := s.thumbs.get(ctx, a.Name, hash); err != nil {
+		if _, err := s.thumbs.get(ctx, a.Name, hash, false); err != nil {
 			// A single failure (e.g. no Chrome) makes the whole backfill pointless.
 			log.Printf("thumbnail backfill stopped after %d rendered: %v", rendered, err)
 			return

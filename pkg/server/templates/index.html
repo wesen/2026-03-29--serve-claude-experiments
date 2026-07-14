@@ -635,7 +635,11 @@
   }
   function showLightbox(){
     var d = allDocs[lbIndex]; if (!d) return;
-    el("lb-img").src = thumbURLFor(d.name);
+    var img = el("lb-img");
+    img.src = thumbURLFor(d.name);                       // instant low-res
+    var hi = new Image();                                // high-res (may lazily render server-side)
+    hi.onload = function(){ if (allDocs[lbIndex] && allDocs[lbIndex].name === d.name) img.src = hi.src; };
+    hi.src = thumbURLFor(d.name) + "?full=1";
     el("lb-title").textContent = d.title || d.name;
     el("lb-open").href = "/view/" + d.name.split("/").map(encodeURIComponent).join("/");
     el("lb-detail").href = detailURLFor(d.name);
