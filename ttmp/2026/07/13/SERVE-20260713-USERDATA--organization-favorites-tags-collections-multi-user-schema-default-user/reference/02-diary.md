@@ -77,7 +77,7 @@ multi-user-ready base that favorites/tags/collections build on.
 
 **Inferred user intent:** A durable, per-user, multi-user-ready data layer.
 
-**Commit (code):** <pending>
+**Commit (code):** a5c6063 — "feat: SQLite user-data store + multi-user schema (SERVE-20260713-USERDATA task 1)"
 
 ### What I did
 - New `pkg/userdata/store.go`: schema (`CREATE TABLE IF NOT EXISTS`), `Open` (DSN `_foreign_keys=on&_busy_timeout=5000`), `EnsureUser`, and favorites/tags/collections methods (set/list, add/remove/list, create/list/delete/add/remove/reorder/items) with per-user ownership checks.
@@ -115,3 +115,56 @@ multi-user-ready base that favorites/tags/collections build on.
 ### Technical details
 - Schema: `users`, `favorites(user_id,artifact_key)`, `artifact_tags(user_id,artifact_key,tag)`, `collections(id,user_id,name UNIQUE(user_id,name))`, `collection_items(collection_id,artifact_key,position, FK ON DELETE CASCADE)`.
 - New collection item position = `MAX(position)+1`; reorder rewrites positions in a transaction.
+
+## Step 3: Favorites (task 2)
+
+Added per-user favorites end to end: a per-request `userView` threaded into the
+search index, a `favorite` flag/filter/facet, a toggle endpoint, and a star on
+each card. The key design move is that user data stays out of the shared cached
+index; `handleSearch` loads the acting user's small state per request and passes
+it in, which is what keeps multi-user correct later.
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 1)
+
+**Assistant interpretation:** Implement favorites (task 2): toggle API, enrich/filter/facet in /search, and a star UI.
+
+**Inferred user intent:** Mark and quickly find favored artifacts.
+
+**Commit (code):** 2e0f464 — "feat: favorites (SERVE-20260713-USERDATA task 2)"
+
+### What I did
+- `pkg/server/index.go`: `search(q, userView)`; `matches` gained skippable `favorite`/`collection` dimensions; results enriched with `favorite` + merged (manifest ∪ user) tags; `favorite` facet count added.
+- `pkg/server/search.go`: `SearchDocument.Favorite`; extracted `buildSearchDocument`.
+- `pkg/server/server.go`: `userView(user, collection)` loads favorites/tags (+collection items); `handleSearch` parses `favorite`/`collection`; `POST /api/favorite` toggles/sets.
+- `templates/index.html`: ☆/★ star per card (persists via the API), "★ favorites" toggle in the Flags group.
+- Tests: favorite filter/facet/enrichment; user-tag merge.
+
+### Why
+- Loading per-user state per request (cheap) keeps the shared index user-agnostic and correct for future multi-user.
+
+### What worked
+- API: toggle on → `/search?favorite=true` returns 1 with facet `{true:1}`; toggle off → 0.
+- UI: star ☆→★ persists; the favorites toggle filters to the starred card.
+- `go test ./...` green.
+
+### What didn't work
+- Changing `search`'s signature broke the existing `index_test.go` calls (missing `userView{}` arg); patched all six call sites.
+
+### What was tricky to build
+- Faceting the favorite dimension correctly: it must be skippable like the others so its own count reflects the result set filtered by *other* dimensions. Implemented as `matches(q, uv, "favorite")` and counting `uv.favorites[key]`.
+
+### What warrants a second pair of eyes
+- The per-request cost of `Favorites`/`TagsByArtifact` on large accounts (currently full-table reads per user). Fine at expected sizes; revisit if a user amasses very many.
+
+### What should be done in the future
+- Batch/caching of the user view if profiling shows the per-request store reads matter.
+
+### Code review instructions
+- Start at `index.go` (`search`, `matches`, `mergedTags`) and `server.go` (`userView`, `handleFavorite`).
+- Validate: `go test ./pkg/server/`; `curl -X POST /api/favorite -d key=...`; `curl '/search?favorite=true'`.
+
+### Technical details
+- `POST /api/favorite?key=&on=true|false` (omit `on` to toggle) → `{key, favorite}`.
+- `/search` gains `favorite=true` and `collection=<id>`; response `facets.favorite.true` is the favorites count.
