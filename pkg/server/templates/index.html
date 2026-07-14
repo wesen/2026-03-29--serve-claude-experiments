@@ -177,6 +177,7 @@
   var PAGE = 60;
   var state = { q: "", sort: "recent", type: "", project: "", model: "", library: "", warnings: false, favorite: false, collection: 0, tags: [], after: "", before: "", offset: 0, view: "grid" };
   try { var sv = localStorage.getItem("view"); if (sv==="grid"||sv==="list") state.view = sv; } catch(e) {}
+  try { history.scrollRestoration = "manual"; } catch(e) {} // we restore scroll ourselves from the URL
   var lastTotal = 0;
   var collections = [];
 
@@ -387,7 +388,7 @@
     reload();
   }
 
-  function qs(){
+  function qs(limit, offset){
     var p = new URLSearchParams();
     if (state.q) p.set("q", state.q);
     if (state.sort) p.set("sort", state.sort);
@@ -398,14 +399,70 @@
     if (state.after) p.set("after", state.after);
     if (state.before) p.set("before", state.before);
     state.tags.forEach(function(t){ p.append("tag", t); });
-    p.set("limit", PAGE); p.set("offset", state.offset);
+    p.set("limit", limit || PAGE); p.set("offset", offset != null ? offset : state.offset);
     return p.toString();
+  }
+
+  // ---- URL <-> state: keep filters, loaded count, and scroll position in the URL
+  // so browser Back restores exactly where you were.
+  function loadedCount(){ return el("grid").children.length; }
+  function writeURL(){
+    var p = new URLSearchParams();
+    if (state.q) p.set("q", state.q);
+    if (state.sort && state.sort !== "recent") p.set("sort", state.sort);
+    ["type","project","model","library","after","before"].forEach(function(k){ if(state[k]) p.set(k, state[k]); });
+    if (state.warnings) p.set("warnings","1");
+    if (state.favorite) p.set("favorite","1");
+    if (state.collection) p.set("collection", state.collection);
+    state.tags.forEach(function(t){ p.append("tag", t); });
+    if (state.view !== "grid") p.set("view", state.view);
+    var n = loadedCount(); if (n > PAGE) p.set("n", n);        // how many are loaded
+    var y = Math.round(window.scrollY); if (y > 0) p.set("y", y); // scroll position
+    var s = p.toString();
+    try { history.replaceState(null, "", s ? ("?" + s) : location.pathname); } catch(e) {}
+  }
+  function hydrateFromURL(){
+    var p = new URLSearchParams(location.search);
+    if (p.has("q")) state.q = p.get("q");
+    if (p.has("sort")) state.sort = p.get("sort");
+    ["type","project","model","library","after","before"].forEach(function(k){ if(p.has(k)) state[k] = p.get(k); });
+    state.warnings = p.get("warnings") === "1";
+    state.favorite = p.get("favorite") === "1";
+    state.collection = parseInt(p.get("collection")||"0", 10) || 0;
+    if (p.getAll("tag").length) state.tags = p.getAll("tag");
+    var v = p.get("view"); if (v === "grid" || v === "list") state.view = v;
+    return { n: parseInt(p.get("n")||"0", 10) || 0, y: parseInt(p.get("y")||"0", 10) || 0 };
+  }
+  function reflectControls(){
+    el("q").value = state.q || "";
+    el("sort").value = state.sort || "recent";
+    el("after").value = state.after || "";
+    el("before").value = state.before || "";
+    if (state.after || state.before){ el("advanced").style.display = "flex"; el("adv-btn").classList.add("active"); }
+    el("view-grid").classList.toggle("active", state.view === "grid");
+    el("view-list").classList.toggle("active", state.view === "list");
+  }
+  // Restore a saved view: fetch the previously-loaded count in one request, then
+  // scroll to the saved position. Otherwise do a normal first page.
+  function initialLoad(restore){
+    if (restore.n > PAGE){
+      var n = Math.min(restore.n, 600);
+      fetch("/search?" + qs(n, 0)).then(function(r){ return r.json(); }).then(function(data){
+        render(data);
+        state.offset = Math.max(0, data.results.length - PAGE);
+        renderCards(data.results, false);
+        if (restore.y > 0) requestAnimationFrame(function(){ window.scrollTo(0, restore.y); });
+      });
+    } else {
+      reload();
+    }
   }
 
   function fetchPage(append){
     fetch("/search?"+qs()).then(function(r){ return r.json(); }).then(function(data){
       render(data);
       renderCards(data.results, append);
+      writeURL();
     });
   }
 
@@ -497,8 +554,16 @@
     else if(e.key==="f"){ var it=gridItems(); if(it[selIdx]){ var s=it[selIdx].querySelector(".star"); if(s) s.click(); } }
   });
 
+  // Keep the URL's scroll position current (throttled), and flush it right before
+  // a card navigation so Back returns to the exact spot.
+  var scrollTimer;
+  window.addEventListener("scroll", function(){ clearTimeout(scrollTimer); scrollTimer = setTimeout(writeURL, 150); }, { passive: true });
+  el("grid").addEventListener("click", function(){ writeURL(); }, true);
+
   loadCollections();
-  reload();
+  var restore = hydrateFromURL();
+  reflectControls();
+  initialLoad(restore);
 })();
 </script>
 {{if .Watch}}<script>
