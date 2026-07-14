@@ -283,16 +283,22 @@ func (s *Server) handleSearchIndex(w http.ResponseWriter, r *http.Request) {
 // {total, results, facets}. All query parameters are optional.
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	// The search box supports a mini query language (tag:, model:, before:, ...);
+	// parse it and merge with the explicit facet/date params the UI also sends.
+	pq := parseSearchSyntax(q.Get("q"))
+	tags := append(append([]string{}, q["tag"]...), pq.Tags...)
 	query := searchQuery{
-		Q:          q.Get("q"),
-		Type:       q.Get("type"),
-		Project:    q.Get("project"),
-		Model:      q.Get("model"),
-		Tags:       q["tag"],
-		Library:    q.Get("library"),
-		Warnings:   q.Get("warnings") == "true",
-		Favorite:   q.Get("favorite") == "true",
+		Q:          pq.Text,
+		Type:       firstNonEmpty(pq.Type, q.Get("type")),
+		Project:    firstNonEmpty(pq.Project, q.Get("project")),
+		Model:      firstNonEmpty(pq.Model, q.Get("model")),
+		Tags:       dedupeFold(tags),
+		Library:    firstNonEmpty(pq.Library, q.Get("library")),
+		Warnings:   q.Get("warnings") == "true" || pq.Warnings,
+		Favorite:   q.Get("favorite") == "true" || pq.Favorite,
 		Collection: int64(atoiDefault(q.Get("collection"), 0)),
+		After:      parseDateBound(firstNonEmpty(pq.After, q.Get("after")), false),
+		Before:     parseDateBound(firstNonEmpty(pq.Before, q.Get("before")), true),
 		Sort:       q.Get("sort"),
 		Limit:      atoiDefault(q.Get("limit"), 60),
 		Offset:     atoiDefault(q.Get("offset"), 0),

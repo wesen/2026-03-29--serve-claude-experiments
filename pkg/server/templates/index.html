@@ -79,6 +79,12 @@
   .more { margin: 16px auto 0; display: block; font: inherit; padding: 6px 16px; border: 2px solid #000; background: #fff; box-shadow: 2px 2px 0 #000; cursor: pointer; }
   .empty { padding: 30px; text-align: center; color: #666; }
   .card.selected, .row.selected { outline: 3px solid #2563eb; outline-offset: 1px; }
+  /* advanced search panel */
+  .advanced { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 0 0 14px; padding: 8px 10px; border: 2px solid #000; background: #fafafa; font-size: 11px; }
+  .advanced label { display: flex; gap: 5px; align-items: center; white-space: nowrap; }
+  .dateinput { font: inherit; font-size: 11px; padding: 2px 5px; border: 1px solid #000; background: #fff; }
+  .syntax-help { color: #555; line-height: 1.7; }
+  .syntax-help code { background: #eee; border: 1px solid #ccc; padding: 0 3px; margin: 0 1px; border-radius: 2px; }
   /* command palette */
   .palette-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; z-index: 1000; }
   .palette-box { width: 560px; max-width: 92vw; background: #fff; border: 2px solid #000; box-shadow: 4px 4px 0 #000; }
@@ -103,6 +109,10 @@
   body.dark .row { border-bottom-color: #383838; }
   body.dark .row:hover { background: #2f2f2f; }
   body.dark .pr { border-color: #333; }
+  body.dark .advanced { background: #202020; border-color: #777; }
+  body.dark .advanced, body.dark .syntax-help { color: #9a9a9a; }
+  body.dark .dateinput { background: #262626; color: #e6e6e6; border-color: #666; }
+  body.dark .syntax-help code { background: #333; border-color: #555; color: #ddd; }
   body.dark .palette-input { border-bottom-color: #777; }
 </style>
 </head>
@@ -112,7 +122,8 @@
       <div class="subtitle">Serving from <code>{{.Dir}}</code> — {{.Count}} artifacts</div>
 
       <div class="toolbar">
-        <input id="q" class="search-input" type="text" placeholder="Search title, description, tags, source, transcript…" autocomplete="off" />
+        <input id="q" class="search-input" type="text" placeholder="Search… (try tag:eink model:claude-fable-5 after:2026-06-01)" autocomplete="off" />
+        <button id="adv-btn" class="vbtn" title="Advanced search (dates + syntax)">⚙</button>
         <select id="sort">
           <option value="recent">Recent</option>
           <option value="title">Title A–Z</option>
@@ -127,6 +138,17 @@
         <button id="theme" class="vbtn" title="Toggle dark mode (d)">◐</button>
         <button id="palette-btn" class="vbtn" title="Command palette (⌘K)">⌘K</button>
         <span id="count" class="count"></span>
+      </div>
+
+      <div id="advanced" class="advanced" style="display:none">
+        <label>After <input id="after" type="date" class="dateinput"></label>
+        <label>Before <input id="before" type="date" class="dateinput"></label>
+        <span class="syntax-help">Type in the box:
+          <code>tag:x</code> <code>model:x</code> <code>type:jsx</code>
+          <code>project:x</code> <code>library:x</code> <code>is:favorite</code>
+          <code>has:warnings</code> <code>after:YYYY-MM-DD</code> <code>before:YYYY-MM-DD</code>
+          — quote values with spaces: <code>tag:"multi word"</code>
+        </span>
       </div>
 
       <div class="layout">
@@ -153,7 +175,7 @@
 <script>
 (function(){
   var PAGE = 60;
-  var state = { q: "", sort: "recent", type: "", project: "", model: "", library: "", warnings: false, favorite: false, collection: 0, tags: [], offset: 0, view: "grid" };
+  var state = { q: "", sort: "recent", type: "", project: "", model: "", library: "", warnings: false, favorite: false, collection: 0, tags: [], after: "", before: "", offset: 0, view: "grid" };
   try { var sv = localStorage.getItem("view"); if (sv==="grid"||sv==="list") state.view = sv; } catch(e) {}
   var lastTotal = 0;
   var collections = [];
@@ -357,7 +379,7 @@
       return c;
   }
 
-  function anyFilter(){ return state.type||state.project||state.model||state.library||state.warnings||state.favorite||state.collection||state.tags.length>0; }
+  function anyFilter(){ return state.type||state.project||state.model||state.library||state.warnings||state.favorite||state.collection||state.after||state.before||state.tags.length>0; }
 
   function toggleFacet(dim, val){
     if (dim === "tag"){ var i = state.tags.indexOf(val); if (i>=0) state.tags.splice(i,1); else state.tags.push(val); }
@@ -373,6 +395,8 @@
     if (state.warnings) p.set("warnings","true");
     if (state.favorite) p.set("favorite","true");
     if (state.collection) p.set("collection", state.collection);
+    if (state.after) p.set("after", state.after);
+    if (state.before) p.set("before", state.before);
     state.tags.forEach(function(t){ p.append("tag", t); });
     p.set("limit", PAGE); p.set("offset", state.offset);
     return p.toString();
@@ -390,7 +414,17 @@
   el("q").addEventListener("input", debounce(function(){ state.q = el("q").value.trim(); reload(); }, 180));
   el("sort").addEventListener("change", function(){ state.sort = el("sort").value; reload(); });
   el("more").addEventListener("click", function(){ state.offset += PAGE; fetchPage(true); });
-  el("clear").addEventListener("click", function(){ state.type=state.project=state.model=state.library=""; state.tags=[]; state.warnings=false; state.favorite=false; state.collection=0; reload(); });
+  el("clear").addEventListener("click", function(){ state.type=state.project=state.model=state.library=""; state.tags=[]; state.warnings=false; state.favorite=false; state.collection=0; state.after=state.before=""; el("after").value=""; el("before").value=""; reload(); });
+
+  // advanced search: toggle the date/syntax panel; date inputs feed the query.
+  el("adv-btn").addEventListener("click", function(){
+    var a = el("advanced");
+    var show = a.style.display === "none";
+    a.style.display = show ? "flex" : "none";
+    el("adv-btn").classList.toggle("active", show);
+  });
+  el("after").addEventListener("change", function(){ state.after = el("after").value; reload(); });
+  el("before").addEventListener("change", function(){ state.before = el("before").value; reload(); });
 
   function setView(v){
     state.view = v;

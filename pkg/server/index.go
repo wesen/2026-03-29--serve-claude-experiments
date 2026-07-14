@@ -121,6 +121,8 @@ type searchQuery struct {
 	Warnings   bool
 	Favorite   bool  // only favorites of the acting user
 	Collection int64 // only artifacts in this collection (0 = no filter)
+	After      int64 // unix lower bound on the entry's date (0 = no bound)
+	Before     int64 // unix upper bound on the entry's date (0 = no bound)
 	Sort       string
 	Limit      int
 	Offset     int
@@ -193,6 +195,14 @@ func (e indexEntry) matches(q searchQuery, uv userView, skip string) bool {
 		return false
 	}
 	if skip != "collection" && q.Collection != 0 && !uv.collectionKeys[a.Name] {
+		return false
+	}
+	// Date range applies to the entry's sort date (conversation updated/created,
+	// falling back to file mtime). It is a filter, not a facet, so it always applies.
+	if q.After != 0 && e.sortTime < q.After {
+		return false
+	}
+	if q.Before != 0 && e.sortTime > q.Before {
 		return false
 	}
 	if q.Q != "" {
