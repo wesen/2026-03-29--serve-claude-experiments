@@ -25,3 +25,12 @@ Follow-on enhancements (Steps 8-13): self-contained Docker image with bundled Ch
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/templates/artifact.html — Detail-page enhancements (Step 9)
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/templates/transcript.html — Rendered transcript (Step 11)
 
+
+## 2026-07-14
+
+Step 14: advanced search — query syntax (tag:/model:/type:/is:/has:/after:/before:) + date-range filters + ⚙ UI panel (commit 8daa80e)
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/pkg/server/query.go — Query-syntax parser + date bounds
+

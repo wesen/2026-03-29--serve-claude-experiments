@@ -636,3 +636,56 @@ A user tag rendered twice on each card — once in the gray, filterable tag row 
 
 ### Technical details
 - `manifestTags = d.tags.filter(t => !userSet[t.toLowerCase()])`.
+
+## Step 14: Advanced search — query syntax and date-range filters
+
+The search box gained a mini query language (`tag:`, `model:`, `type:`, `project:`, `library:`, `is:favorite`, `has:warnings`, `after:`/`before:` dates), and the index gained a date-range filter. The syntax is parsed server-side and merged with the explicit facet/date params the UI already sends, so typed filters and clicked facets compose. A `⚙` advanced panel adds date pickers and a syntax legend. This makes a now-large library (≈200 artifacts after the bulk import) navigable by precise queries rather than only facet clicks.
+
+### Prompt Context
+
+**User prompt (verbatim):** "Add advanced search with date range filters and search syntax (for tags, models, etc...)"
+
+**Assistant interpretation:** Add a typed query syntax for field filters plus date-range filtering, wired into both the search box and a small advanced UI.
+
+**Inferred user intent:** Precise, expressive filtering over a large library without clicking through facets.
+
+**Commit (code):** 8daa80e — "feat: advanced search — query syntax (tag:/model:/type:/is:/has:) + date-range filters"
+
+### What I did
+- **Parser** (`pkg/server/query.go`): `parseSearchSyntax` → `parsedQuery` (tags, type, model, project, library, favorite, warnings, after, before, free text). `tokenizeQuery` keeps quoted spans together; `splitField` classifies `key:value`; unknown keys/URLs fall through to free text. `parseDateBound` (YYYY-MM-DD or RFC3339; upper bound → end of day). Helpers `firstNonEmpty`, `dedupeFold`.
+- **Index** (`index.go`): `searchQuery.After/Before` (unix bounds) + a date check in `matches` against `e.sortTime`; it always applies (not a facet), so facet counts respect it.
+- **handleSearch** (`server.go`): parse the box syntax, merge with `?tag/type/model/…/after/before` params (union tags; fill/override single-value; OR flags; dates via `firstNonEmpty` then `parseDateBound`).
+- **UI** (`index.html`): `⚙` advanced toggle, After/Before `<input type=date>`, a syntax legend, a syntax-hinting placeholder; `state.after/before`, `qs()` params, clear-filters + `anyFilter` updated.
+- Unit tests (`query_test.go`): syntax parse (incl. quoted tag and unknown/URL passthrough), date-bound end-of-day delta, dedupe.
+
+### Why
+- Parsing server-side keeps one filter path: whether a constraint arrives as a typed token or a facet param, it lands in the same `searchQuery`. The UI didn't need a client-side parser.
+- Date range on `sortTime` (conversation updated/created, else file mtime) matches the "Recent" sort's notion of an artifact's date.
+
+### What worked
+- Live: `model:claude-fable-5 type:jsx` → 16, all matching; `tag:eink` → 1; `after=2026-07-04` → dates 2026-07-06…07-14; `before:2026-06-01` → max date 2026-05-29. UI panel shows date pickers + legend; facets reflect the filtered set. All package tests green.
+
+### What didn't work
+- N/A (clean; the parser's quote/colon edge cases were covered by tests up front).
+
+### What was tricky to build
+- Not swallowing ordinary colon-bearing terms (URLs like `https://…`, `foo:bar`) as filters. Solved by only treating a *known* key set as fields and routing everything else — including unknown `key:value` — to free text, with a test (`TestParseSearchSyntaxLeavesUnknownAndColonTermsAsText`) pinning it.
+- Merge precedence between typed syntax and UI params for single-value fields: chose "syntax wins if present, else the param" via `firstNonEmpty`, and union for tags; documented so the behavior is intentional, not incidental.
+
+### What warrants a second pair of eyes
+- The merge rules in `handleSearch` (single-value override vs multi-value union vs flag OR) — confirm they match intended UX when a user both types `type:jsx` and clicks the `html` facet (syntax wins).
+- `before:` inclusivity: the upper bound is pushed to 23:59:59 so `before:D` includes all of day D; confirm that is the desired semantics.
+
+### What should be done in the future
+- Reflect typed filters back into the sidebar's active-facet highlights (today a `tag:` typed in the box filters correctly but doesn't light up the tag facet).
+- Consider `model:` / `tag:` value autocomplete in the box.
+
+### Code review instructions
+- `pkg/server/query.go` (+ `query_test.go`): the parser and date bounds.
+- `pkg/server/index.go`: `searchQuery.After/Before` and the `matches` date check.
+- `pkg/server/server.go`: the merge in `handleSearch`.
+- `pkg/server/templates/index.html`: the `⚙` panel, date inputs, `qs()`/`clear`/`anyFilter`.
+- Validate: `go test ./pkg/server/ -run 'ParseSearch|ParseDate|Dedupe'`; `curl -G localhost:PORT/search --data-urlencode 'q=model:x type:jsx'`; `curl 'localhost:PORT/search?after=YYYY-MM-DD'`.
+
+### Technical details
+- Recognized keys: `tag/tags`, `type`, `model`, `project/proj`, `library/lib`, `after/since`, `before/until`, `is:(favorite|favorited|fav|starred)`, `has:(warnings|warning|warn)`.
