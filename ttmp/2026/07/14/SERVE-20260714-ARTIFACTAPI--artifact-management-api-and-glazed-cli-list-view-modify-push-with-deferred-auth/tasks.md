@@ -8,4 +8,4 @@
 - [x] Push: safeArtifactPath + POST /api/artifacts + sentinels (ErrArtifactExists/ErrBadArtifactName/ErrUnsupportedType) with status mapping <!-- t:vs7g -->
 - [x] Auth seam: authorize(r, action) + requireWrite middleware (allow-all today); wire every mutating route through it <!-- t:a230 -->
 - [x] CLI: shared apiClient + artifact list/get (Glazed) + set-meta/push (dual-mode) verbs; root wiring via cli.BuildCobraCommand <!-- t:6ojp -->
-- [ ] Docs: Glazed help topic for the artifact group; update ticket diary <!-- t:04q5 -->
+- [x] Docs: Glazed help topic for the artifact group; update ticket diary <!-- t:04q5 -->

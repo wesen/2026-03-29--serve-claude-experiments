@@ -146,6 +146,54 @@ Added the `artifact` command group so the API is drivable from a terminal. The v
 - `list` → `GET /api/artifacts?q=&type=&tag=&limit=`; `get` → `GET /api/artifact/{name}`; `source` → `GET /api/source/{name}`; `set-meta` → `PATCH|PUT /api/manifest/{name}`; `push` → `POST /api/artifacts`.
 - Non-2xx → `fmt.Errorf("%s: %s", resp.Status, serverErrorMessage(body))`.
 
+## Step 3: Glazed help topic for the artifact group
+
+Wrote a proper Glazed help page for the `artifact` command group and, as a small
+bonus, gave the pre-existing `improvements-for-scale.md` the frontmatter it was
+missing so it stops failing to load at startup. The help system was already wired
+in `main.go` (`help.NewHelpSystem` + `doc.AddDocToHelpSystem` + `help_cmd.SetupCobraRootCommand`), so this was purely authoring an embedded `doc/*.md` with the right frontmatter.
+
+### Prompt Context
+
+**User prompt (verbatim):** "go ahead"
+
+**Assistant interpretation:** Complete the one remaining follow-up from the previous step — the Glazed help topic for the artifact group.
+
+**Inferred user intent:** Finish the ticket's documented next step.
+
+**Commit (code):** see changelog (docs commit).
+
+### What I did
+- `cmd/serve-artifacts/doc/artifact-api-cli.md`: new `Application` help page (Slug `artifact-api-cli`) covering the connection model, each verb, the read-vs-write distinction, a troubleshooting table, and a See Also — no top-level `#` heading (Glazed renders the title).
+- `cmd/serve-artifacts/doc/improvements-for-scale.md`: added frontmatter (Title/Slug/Short/SectionType) and dropped its top-level `#` heading, removing the `missing slug or title` startup warning.
+
+### Why
+- The help system loads embedded `doc/*.md`; a page without frontmatter is skipped with a warning and is undiscoverable via `help <slug>`.
+
+### What worked
+- `serve-artifacts help artifact-api-cli` renders the page; `serve-artifacts artifact --help` lists all five verbs; no `Failed to load section` warnings remain at startup.
+
+### What didn't work
+- N/A.
+
+### What I learned
+- `SectionType: Application` fits a page that spans several commands end to end (list → get → set-meta → push), versus `GeneralTopic`/`Tutorial` for the existing pages.
+
+### What was tricky to build
+- N/A — followed the `adding-artifacts.md` frontmatter convention.
+
+### What warrants a second pair of eyes
+- N/A (documentation).
+
+### What should be done in the future
+- Optional `--with-glaze-output` dual mode on `set-meta`/`push`; `list --offset` paging. (Carried from Step 2.)
+
+### Code review instructions
+- Read `cmd/serve-artifacts/doc/artifact-api-cli.md`; validate with `serve-artifacts help artifact-api-cli` and confirm no `missing slug` warnings on any command.
+
+### Technical details
+- Frontmatter keys used: `Title, Slug, Short, Topics, Commands, Flags, IsTopLevel, IsTemplate, ShowPerDefault, SectionType`.
+
 ## Related
 
 - `design/01-artifact-management-api-and-glazed-cli-analysis-design-and-implementation-guide.md` — the design this implements (route table updated post-implementation for the wildcard-last constraint).

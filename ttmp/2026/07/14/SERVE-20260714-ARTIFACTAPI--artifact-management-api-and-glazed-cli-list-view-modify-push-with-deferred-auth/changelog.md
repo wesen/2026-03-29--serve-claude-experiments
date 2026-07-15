@@ -23,3 +23,12 @@ Glazed CLI verbs implemented + verified live (commit 0f11ba2): artifact list/get
 
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/cmd/serve-artifacts/cmds/artifact.go — the five artifact verbs
 
+
+## 2026-07-14
+
+Glazed help topic for the artifact group + frontmatter fix for improvements-for-scale.md (removes startup warning); all verbs listed under 'artifact --help'.
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/cmd/serve-artifacts/doc/artifact-api-cli.md — artifact API+CLI help page
+

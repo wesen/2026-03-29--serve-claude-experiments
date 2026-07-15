@@ -1,4 +1,16 @@
-# Improvements for managing thousands of artifacts
+---
+Title: "Improvements for Managing Thousands of Artifacts"
+Slug: "improvements-for-scale"
+Short: "A prioritized design roadmap for scaling serve-artifacts to thousands of artifacts (persistent index, search, organization)."
+Topics:
+- artifacts
+- web-server
+DocType: design
+IsTopLevel: false
+IsTemplate: false
+ShowPerDefault: false
+SectionType: GeneralTopic
+---
 
 This document is a prioritized set of suggestions for growing `serve-artifacts`
 from "renders a folder of demos" into a tool for browsing, searching, annotating,
