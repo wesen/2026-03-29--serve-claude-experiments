@@ -147,6 +147,65 @@ func TestPushConflictUnlessOverwrite(t *testing.T) {
 	}
 }
 
+func TestPushRejectsCrossTypeCollisionAndOverwritesAcrossTypes(t *testing.T) {
+	s, ts := newTestServer(t)
+
+	first := `{"name":"dup","type":"jsx","source":"export default function Dup() {}"}`
+	if resp, b := doReq(t, "POST", ts.URL+"/api/artifacts", "application/json", strings.NewReader(first)); resp.StatusCode != 201 {
+		t.Fatalf("first push = %d %s", resp.StatusCode, b)
+	}
+
+	crossType := `{"name":"dup","type":"html","source":"<title>two</title>"}`
+	if resp, _ := doReq(t, "POST", ts.URL+"/api/artifacts", "application/json", strings.NewReader(crossType)); resp.StatusCode != 409 {
+		t.Fatalf("cross-type conflict status = %d, want 409", resp.StatusCode)
+	}
+	if _, err := os.Stat(filepath.Join(s.dir, "dup.html")); !os.IsNotExist(err) {
+		t.Fatalf("cross-type conflict created dup.html: err=%v", err)
+	}
+
+	over := `{"name":"dup","type":"html","source":"<title>two</title>","overwrite":true}`
+	if resp, b := doReq(t, "POST", ts.URL+"/api/artifacts", "application/json", strings.NewReader(over)); resp.StatusCode != 201 {
+		t.Fatalf("cross-type overwrite = %d %s", resp.StatusCode, b)
+	}
+	if _, err := os.Stat(filepath.Join(s.dir, "dup.jsx")); !os.IsNotExist(err) {
+		t.Fatalf("old cross-type source remains: err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(s.dir, "dup.html")); err != nil {
+		t.Fatalf("new cross-type source missing: %v", err)
+	}
+
+	resp, body := doReq(t, "GET", ts.URL+"/api/artifacts", "", nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("list after cross-type overwrite = %d %s", resp.StatusCode, body)
+	}
+	var list struct {
+		Total int `json:"total"`
+	}
+	if err := json.Unmarshal(body, &list); err != nil {
+		t.Fatal(err)
+	}
+	if list.Total != 2 {
+		t.Fatalf("list after cross-type overwrite total = %d, want 2", list.Total)
+	}
+}
+
+func TestPushInvalidManifestDoesNotLeaveSource(t *testing.T) {
+	s, ts := newTestServer(t)
+
+	bad := `{"name":"orphan","type":"html","source":"<title>Orphan</title>","manifest":{"original_date":"not-a-date"}}`
+	if resp, _ := doReq(t, "POST", ts.URL+"/api/artifacts", "application/json", strings.NewReader(bad)); resp.StatusCode != 400 {
+		t.Fatalf("invalid manifest status = %d, want 400", resp.StatusCode)
+	}
+	if _, err := os.Stat(filepath.Join(s.dir, "orphan.html")); !os.IsNotExist(err) {
+		t.Fatalf("invalid manifest left source behind: err=%v", err)
+	}
+
+	good := `{"name":"orphan","type":"html","source":"<title>Orphan</title>"}`
+	if resp, b := doReq(t, "POST", ts.URL+"/api/artifacts", "application/json", strings.NewReader(good)); resp.StatusCode != 201 {
+		t.Fatalf("retry after invalid manifest = %d %s", resp.StatusCode, b)
+	}
+}
+
 // artifactView decodes the single-artifact detail body enough for assertions.
 type artifactView struct {
 	Artifact struct {

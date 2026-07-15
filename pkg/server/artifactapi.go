@@ -227,23 +227,88 @@ func (s *Server) handleArtifactPush(w http.ResponseWriter, r *http.Request) {
 		writeError(w, corpusStatus(err), err)
 		return
 	}
-	if _, statErr := os.Stat(abs); statErr == nil && !req.Overwrite {
+
+	// Names are extensionless logical keys throughout the server. Scan before
+	// writing so demo.html and demo.jsx cannot coexist under the same key.
+	scanned, scanErr := s.scanner.Scan()
+	if scanErr != nil {
+		writeError(w, http.StatusInternalServerError, scanErr)
+		return
+	}
+	var existing *artifacts.Artifact
+	for i := range scanned {
+		if scanned[i].Name == req.Name {
+			existing = &scanned[i]
+			break
+		}
+	}
+	if existing != nil && !req.Overwrite {
 		writeError(w, corpusStatus(artifacts.ErrArtifactExists), artifacts.ErrArtifactExists)
 		return
 	}
-	if err := artifacts.WriteFileAtomic(abs, []byte(req.Source)); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
+
+	// Validate before touching the source file. WriteManifest validates too, but
+	// doing the preflight here prevents a bad manifest from leaving a source file
+	// behind after the API has returned 400.
 	if req.Manifest != nil {
-		// The manifest sits next to the just-written source; derive its path the
-		// same way the scanner matches it (source path, extension → .manifest.json).
-		mp := abs[:len(abs)-len(ext)] + ".manifest.json"
-		if err := artifacts.WriteManifest(mp, req.Manifest); err != nil {
+		if err := artifacts.ValidateManifest(req.Manifest); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
 	}
+
+	// The manifest sits next to the source; derive its path the same way the
+	// scanner matches it (source path, extension -> .manifest.json).
+	manifestPath := abs[:len(abs)-len(ext)] + ".manifest.json"
+	oldPath := ""
+	oldManifestPath := ""
+	if existing != nil && existing.Path != abs {
+		oldPath = existing.Path
+		oldManifestPath = existing.ManifestPath
+	}
+
+	if err := artifacts.WriteFileAtomic(abs, []byte(req.Source)); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	// Preserve an existing manifest when an overwrite does not supply a new one,
+	// moving it along with a cross-type replacement so it cannot remain orphaned.
+	manifestMoved := false
+	if req.Manifest != nil {
+		if err := artifacts.WriteManifest(manifestPath, req.Manifest); err != nil {
+			_ = os.Remove(abs)
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	} else if oldManifestPath != "" && oldManifestPath != manifestPath {
+		if err := os.Rename(oldManifestPath, manifestPath); err != nil {
+			_ = os.Remove(abs)
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		manifestMoved = true
+	}
+
+	// Remove the old source only after the replacement is safely written. If
+	// cleanup fails, roll back the new files so two artifacts cannot share a key.
+	if oldPath != "" {
+		if err := os.Remove(oldPath); err != nil && !os.IsNotExist(err) {
+			_ = os.Remove(abs)
+			if req.Manifest != nil {
+				_ = os.Remove(manifestPath)
+			}
+			if manifestMoved {
+				_ = os.Rename(manifestPath, oldManifestPath)
+			}
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if oldManifestPath != "" && oldManifestPath != manifestPath && !manifestMoved {
+			_ = os.Remove(oldManifestPath)
+		}
+	}
+
 	if err := s.index.rebuild(); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
