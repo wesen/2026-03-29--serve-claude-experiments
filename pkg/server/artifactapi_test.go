@@ -207,6 +207,65 @@ func TestManifestInvalidIsBadRequest(t *testing.T) {
 	}
 }
 
+// newTokenServer is like newTestServer but configures a write token.
+func newTokenServer(t *testing.T, token string) *httptest.Server {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hello.html"), []byte("<title>Hello</title>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(Config{Dir: dir, NoThumbs: true, DBPath: filepath.Join(t.TempDir(), "userdata.db"), WriteToken: token})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := s.index.rebuild(); err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	ts := httptest.NewServer(s.registerRoutes())
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func doReqAuth(t *testing.T, method, url, token, body string) int {
+	t.Helper()
+	req, err := http.NewRequest(method, url, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+func TestWriteTokenGate(t *testing.T) {
+	ts := newTokenServer(t, "s3cret")
+	man := `{"title":"T"}`
+
+	// Reads stay open without a token.
+	if code := doReqAuth(t, "GET", ts.URL+"/api/artifacts", "", ""); code != 200 {
+		t.Fatalf("list without token = %d, want 200", code)
+	}
+	// Write without a token is forbidden.
+	if code := doReqAuth(t, "PUT", ts.URL+"/api/manifest/hello", "", man); code != 403 {
+		t.Fatalf("write without token = %d, want 403", code)
+	}
+	// Write with the wrong token is forbidden.
+	if code := doReqAuth(t, "PUT", ts.URL+"/api/manifest/hello", "wrong", man); code != 403 {
+		t.Fatalf("write with wrong token = %d, want 403", code)
+	}
+	// Write with the correct token succeeds.
+	if code := doReqAuth(t, "PUT", ts.URL+"/api/manifest/hello", "s3cret", man); code != 200 {
+		t.Fatalf("write with correct token = %d, want 200", code)
+	}
+}
+
 func TestManifestOnMissingArtifactIs404(t *testing.T) {
 	_, ts := newTestServer(t)
 	if resp, _ := doReq(t, "PUT", ts.URL+"/api/manifest/ghost", "application/json", bytes.NewReader([]byte(`{"title":"x"}`))); resp.StatusCode != 404 {

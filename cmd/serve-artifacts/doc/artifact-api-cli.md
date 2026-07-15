@@ -48,9 +48,10 @@ serve-artifacts artifact list
 ```
 
 Write verbs (`set-meta`, `push`) also accept `--token` (or `SERVE_ARTIFACTS_TOKEN`),
-sent as an `Authorization: Bearer` header. The server does not require a token
-today — authorization is an allow-all seam — but the flag is wired so scripts are
-ready for the day it does.
+sent as an `Authorization: Bearer` header. If the server was started with a write
+token (`--write-token` / `SERVE_ARTIFACTS_WRITE_TOKEN`), writes without a matching
+token get `403`; reads stay open regardless. If the server has no write token
+configured, writes are open (and the server logs a warning at startup).
 
 ## Reading: list, get, source
 

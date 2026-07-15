@@ -21,20 +21,36 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// apiFlags are the connection flags every artifact verb shares.
-func apiFlags() []*fields.Definition {
-	return []*fields.Definition{
-		fields.New("api", fields.TypeString, fields.WithDefault(""),
-			fields.WithHelp("Server base URL (default $SERVE_ARTIFACTS_API or http://localhost:8080)")),
-		fields.New("token", fields.TypeString, fields.WithDefault(""),
-			fields.WithHelp("Bearer token for write access (default $SERVE_ARTIFACTS_TOKEN)")),
-	}
-}
+// connectionSlug names the reusable server-connection section.
+const connectionSlug = "connection"
 
-// apiConn is the decoded connection settings shared by all verbs.
-type apiConn struct {
+// connectionSettings is the decoded form of the shared --api/--token section.
+type connectionSettings struct {
 	API   string `glazed:"api"`
 	Token string `glazed:"token"`
+}
+
+// newConnectionSection builds the reusable server-connection section (--api,
+// --token). Every verb composes it via cmds.WithSections, so the base connection
+// flags are declared in exactly one place instead of appended per command.
+func newConnectionSection() (schema.Section, error) {
+	return schema.NewSection(connectionSlug, "Server connection",
+		schema.WithFields(
+			fields.New("api", fields.TypeString, fields.WithDefault(""),
+				fields.WithHelp("Server base URL (default $SERVE_ARTIFACTS_API or http://localhost:8080)")),
+			fields.New("token", fields.TypeString, fields.WithDefault(""),
+				fields.WithHelp("Bearer token for write access (default $SERVE_ARTIFACTS_TOKEN)")),
+		),
+	)
+}
+
+// clientFrom decodes the connection section and returns a configured API client.
+func clientFrom(vals *values.Values) (*apiClient, error) {
+	c := &connectionSettings{}
+	if err := vals.DecodeSectionInto(connectionSlug, c); err != nil {
+		return nil, err
+	}
+	return newAPIClient(c.API, c.Token), nil
 }
 
 // artifactPath builds a /api/... path for an artifact name, escaping each segment
@@ -85,7 +101,6 @@ type ArtifactListCommand struct{ *cmds.CommandDescription }
 var _ cmds.GlazeCommand = (*ArtifactListCommand)(nil)
 
 type artifactListSettings struct {
-	apiConn
 	Query string `glazed:"query"`
 	Type  string `glazed:"type"`
 	Tag   string `glazed:"tag"`
@@ -97,16 +112,19 @@ func NewArtifactListCommand() (*ArtifactListCommand, error) {
 	if err != nil {
 		return nil, err
 	}
-	flags := append(apiFlags(),
-		fields.New("query", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Full-text query (same syntax as the search box)")),
-		fields.New("type", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Filter by type (html, jsx)")),
-		fields.New("tag", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Filter by tag")),
-		fields.New("limit", fields.TypeInteger, fields.WithDefault(200), fields.WithHelp("Maximum results")),
-	)
+	connSection, err := newConnectionSection()
+	if err != nil {
+		return nil, err
+	}
 	return &ArtifactListCommand{cmds.NewCommandDescription("list",
 		cmds.WithShort("List artifacts from a running server"),
-		cmds.WithFlags(flags...),
-		cmds.WithSections(glazedSection),
+		cmds.WithFlags(
+			fields.New("query", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Full-text query (same syntax as the search box)")),
+			fields.New("type", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Filter by type (html, jsx)")),
+			fields.New("tag", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Filter by tag")),
+			fields.New("limit", fields.TypeInteger, fields.WithDefault(200), fields.WithHelp("Maximum results")),
+		),
+		cmds.WithSections(glazedSection, connSection),
 	)}, nil
 }
 
@@ -115,7 +133,10 @@ func (c *ArtifactListCommand) RunIntoGlazeProcessor(ctx context.Context, vals *v
 	if err := vals.DecodeSectionInto(schema.DefaultSlug, s); err != nil {
 		return err
 	}
-	client := newAPIClient(s.API, s.Token)
+	client, err := clientFrom(vals)
+	if err != nil {
+		return err
+	}
 
 	q := url.Values{}
 	if s.Query != "" {
@@ -160,7 +181,6 @@ type ArtifactGetCommand struct{ *cmds.CommandDescription }
 var _ cmds.GlazeCommand = (*ArtifactGetCommand)(nil)
 
 type artifactGetSettings struct {
-	apiConn
 	Name string `glazed:"name"`
 }
 
@@ -169,13 +189,16 @@ func NewArtifactGetCommand() (*ArtifactGetCommand, error) {
 	if err != nil {
 		return nil, err
 	}
-	flags := append(apiFlags(),
-		fields.New("name", fields.TypeString, fields.WithRequired(true), fields.WithHelp("Artifact name (slash path without extension)")),
-	)
+	connSection, err := newConnectionSection()
+	if err != nil {
+		return nil, err
+	}
 	return &ArtifactGetCommand{cmds.NewCommandDescription("get",
 		cmds.WithShort("Show one artifact's metadata"),
-		cmds.WithFlags(flags...),
-		cmds.WithSections(glazedSection),
+		cmds.WithFlags(
+			fields.New("name", fields.TypeString, fields.WithRequired(true), fields.WithHelp("Artifact name (slash path without extension)")),
+		),
+		cmds.WithSections(glazedSection, connSection),
 	)}, nil
 }
 
@@ -184,7 +207,10 @@ func (c *ArtifactGetCommand) RunIntoGlazeProcessor(ctx context.Context, vals *va
 	if err := vals.DecodeSectionInto(schema.DefaultSlug, s); err != nil {
 		return err
 	}
-	client := newAPIClient(s.API, s.Token)
+	client, err := clientFrom(vals)
+	if err != nil {
+		return err
+	}
 
 	var out struct {
 		Artifact  map[string]any `json:"artifact"`
@@ -217,17 +243,20 @@ type ArtifactSourceCommand struct{ *cmds.CommandDescription }
 var _ cmds.WriterCommand = (*ArtifactSourceCommand)(nil)
 
 type artifactSourceSettings struct {
-	apiConn
 	Name string `glazed:"name"`
 }
 
 func NewArtifactSourceCommand() (*ArtifactSourceCommand, error) {
-	flags := append(apiFlags(),
-		fields.New("name", fields.TypeString, fields.WithRequired(true), fields.WithHelp("Artifact name (slash path without extension)")),
-	)
+	connSection, err := newConnectionSection()
+	if err != nil {
+		return nil, err
+	}
 	return &ArtifactSourceCommand{cmds.NewCommandDescription("source",
 		cmds.WithShort("Print an artifact's raw source to stdout"),
-		cmds.WithFlags(flags...),
+		cmds.WithFlags(
+			fields.New("name", fields.TypeString, fields.WithRequired(true), fields.WithHelp("Artifact name (slash path without extension)")),
+		),
+		cmds.WithSections(connSection),
 	)}, nil
 }
 
@@ -236,7 +265,10 @@ func (c *ArtifactSourceCommand) RunIntoWriter(ctx context.Context, vals *values.
 	if err := vals.DecodeSectionInto(schema.DefaultSlug, s); err != nil {
 		return err
 	}
-	client := newAPIClient(s.API, s.Token)
+	client, err := clientFrom(vals)
+	if err != nil {
+		return err
+	}
 	resp, err := client.do(ctx, "GET", artifactPath("/api/source/", s.Name), nil, "")
 	if err != nil {
 		return err
@@ -256,7 +288,6 @@ type ArtifactSetMetaCommand struct{ *cmds.CommandDescription }
 var _ cmds.WriterCommand = (*ArtifactSetMetaCommand)(nil)
 
 type artifactSetMetaSettings struct {
-	apiConn
 	Name        string   `glazed:"name"`
 	Title       string   `glazed:"title"`
 	Description string   `glazed:"description"`
@@ -266,14 +297,10 @@ type artifactSetMetaSettings struct {
 }
 
 func NewArtifactSetMetaCommand() (*ArtifactSetMetaCommand, error) {
-	flags := append(apiFlags(),
-		fields.New("name", fields.TypeString, fields.WithRequired(true), fields.WithHelp("Artifact name (slash path without extension)")),
-		fields.New("title", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Set the title")),
-		fields.New("description", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Set the description")),
-		fields.New("tag", fields.TypeStringList, fields.WithDefault([]string{}), fields.WithHelp("Set tags (repeatable)")),
-		fields.New("date", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Set original date (YYYY-MM-DD)")),
-		fields.New("replace", fields.TypeBool, fields.WithDefault(false), fields.WithHelp("Replace the whole manifest (PUT) instead of merging (PATCH)")),
-	)
+	connSection, err := newConnectionSection()
+	if err != nil {
+		return nil, err
+	}
 	return &ArtifactSetMetaCommand{cmds.NewCommandDescription("set-meta",
 		cmds.WithShort("Modify an artifact's metadata manifest"),
 		cmds.WithLong(`Modify an artifact's metadata by writing its manifest sidecar.
@@ -281,7 +308,15 @@ func NewArtifactSetMetaCommand() (*ArtifactSetMetaCommand, error) {
 By default only the fields you pass are changed (a PATCH merge); unset fields are
 left as they are. With --replace the whole manifest is replaced (a PUT), so any
 field you do not pass is cleared.`),
-		cmds.WithFlags(flags...),
+		cmds.WithFlags(
+			fields.New("name", fields.TypeString, fields.WithRequired(true), fields.WithHelp("Artifact name (slash path without extension)")),
+			fields.New("title", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Set the title")),
+			fields.New("description", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Set the description")),
+			fields.New("tag", fields.TypeStringList, fields.WithDefault([]string{}), fields.WithHelp("Set tags (repeatable)")),
+			fields.New("date", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Set original date (YYYY-MM-DD)")),
+			fields.New("replace", fields.TypeBool, fields.WithDefault(false), fields.WithHelp("Replace the whole manifest (PUT) instead of merging (PATCH)")),
+		),
+		cmds.WithSections(connSection),
 	)}, nil
 }
 
@@ -290,7 +325,10 @@ func (c *ArtifactSetMetaCommand) RunIntoWriter(ctx context.Context, vals *values
 	if err := vals.DecodeSectionInto(schema.DefaultSlug, s); err != nil {
 		return err
 	}
-	client := newAPIClient(s.API, s.Token)
+	client, err := clientFrom(vals)
+	if err != nil {
+		return err
+	}
 
 	// Merge (PATCH): send only the fields the user provided. Replace (PUT): send
 	// every field, so omissions clear.
@@ -329,7 +367,6 @@ type ArtifactPushCommand struct{ *cmds.CommandDescription }
 var _ cmds.WriterCommand = (*ArtifactPushCommand)(nil)
 
 type artifactPushSettings struct {
-	apiConn
 	File        string   `glazed:"file"`
 	Name        string   `glazed:"name"`
 	Type        string   `glazed:"type"`
@@ -341,19 +378,23 @@ type artifactPushSettings struct {
 }
 
 func NewArtifactPushCommand() (*ArtifactPushCommand, error) {
-	flags := append(apiFlags(),
-		fields.New("file", fields.TypeString, fields.WithRequired(true), fields.WithHelp("Path to the artifact source file (.html or .jsx)")),
-		fields.New("name", fields.TypeString, fields.WithRequired(true), fields.WithHelp("Target artifact name (slash path without extension)")),
-		fields.New("type", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Artifact type (html|jsx); inferred from the file extension if empty")),
-		fields.New("title", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Seed the manifest title")),
-		fields.New("description", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Seed the manifest description")),
-		fields.New("tag", fields.TypeStringList, fields.WithDefault([]string{}), fields.WithHelp("Seed manifest tags (repeatable)")),
-		fields.New("date", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Seed the manifest original date (YYYY-MM-DD)")),
-		fields.New("overwrite", fields.TypeBool, fields.WithDefault(false), fields.WithHelp("Overwrite an existing artifact of the same name")),
-	)
+	connSection, err := newConnectionSection()
+	if err != nil {
+		return nil, err
+	}
 	return &ArtifactPushCommand{cmds.NewCommandDescription("push",
 		cmds.WithShort("Push a new artifact to the server"),
-		cmds.WithFlags(flags...),
+		cmds.WithFlags(
+			fields.New("file", fields.TypeString, fields.WithRequired(true), fields.WithHelp("Path to the artifact source file (.html or .jsx)")),
+			fields.New("name", fields.TypeString, fields.WithRequired(true), fields.WithHelp("Target artifact name (slash path without extension)")),
+			fields.New("type", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Artifact type (html|jsx); inferred from the file extension if empty")),
+			fields.New("title", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Seed the manifest title")),
+			fields.New("description", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Seed the manifest description")),
+			fields.New("tag", fields.TypeStringList, fields.WithDefault([]string{}), fields.WithHelp("Seed manifest tags (repeatable)")),
+			fields.New("date", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Seed the manifest original date (YYYY-MM-DD)")),
+			fields.New("overwrite", fields.TypeBool, fields.WithDefault(false), fields.WithHelp("Overwrite an existing artifact of the same name")),
+		),
+		cmds.WithSections(connSection),
 	)}, nil
 }
 
@@ -362,7 +403,10 @@ func (c *ArtifactPushCommand) RunIntoWriter(ctx context.Context, vals *values.Va
 	if err := vals.DecodeSectionInto(schema.DefaultSlug, s); err != nil {
 		return err
 	}
-	client := newAPIClient(s.API, s.Token)
+	client, err := clientFrom(vals)
+	if err != nil {
+		return err
+	}
 
 	src, err := os.ReadFile(s.File)
 	if err != nil {

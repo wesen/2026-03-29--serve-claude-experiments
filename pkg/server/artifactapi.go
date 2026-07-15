@@ -1,11 +1,13 @@
 package server
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/go-go-golems/serve-artifacts/pkg/artifacts"
 )
@@ -23,11 +25,41 @@ const (
 	actionWrite
 )
 
-// authorize reports whether the request may perform action. Today it allows
-// everything — it is the single seam a real bearer-token / IdP check replaces,
-// exactly as currentUser is the seam for identity. Every mutating route is wired
-// through requireWrite, so enforcement, when it arrives, lives in one place.
-func (s *Server) authorize(_ *http.Request, _ action) error { return nil }
+// authorize reports whether the request may perform action. Reads are always
+// open. Writes are gated by a single shared bearer token (a deliberately simple,
+// "fake" check standing in for a real IdP): when a write token is configured, a
+// mutating request must present `Authorization: Bearer <token>`; when none is
+// configured, writes are open and a warning was logged at startup. This is the
+// one function a real token/IdP check replaces — routing and handlers do not
+// change.
+func (s *Server) authorize(r *http.Request, act action) error {
+	if act != actionWrite {
+		return nil
+	}
+	if s.writeToken == "" {
+		return nil // unauthenticated writes (dev/local); startup logged a warning
+	}
+	presented := bearerToken(r)
+	if presented == "" {
+		return errors.New("missing write token (Authorization: Bearer <token>)")
+	}
+	// Constant-time compare so a wrong token can't be recovered by timing.
+	if subtle.ConstantTimeCompare([]byte(presented), []byte(s.writeToken)) != 1 {
+		return errors.New("invalid write token")
+	}
+	return nil
+}
+
+// bearerToken extracts the token from an `Authorization: Bearer <token>` header,
+// returning "" when the header is absent or not a bearer scheme.
+func bearerToken(r *http.Request) string {
+	h := r.Header.Get("Authorization")
+	const prefix = "Bearer "
+	if len(h) >= len(prefix) && strings.EqualFold(h[:len(prefix)], prefix) {
+		return strings.TrimSpace(h[len(prefix):])
+	}
+	return ""
+}
 
 // requireWrite wraps a handler so it runs only when the request is authorized to
 // mutate the corpus. On denial it returns 403 and never calls the handler.

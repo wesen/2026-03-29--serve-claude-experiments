@@ -53,6 +53,7 @@ type Server struct {
 	dir                string
 	port               int
 	watch              bool
+	writeToken         string // shared bearer token for the write API (empty = writes open)
 	watcher            *watcher
 	precompiled        *precompiledBundle
 	indexTemplate      *template.Template
@@ -76,6 +77,7 @@ type Config struct {
 	ThumbsDir       string // thumbnail cache dir; empty = default under the user cache dir
 	NoThumbs        bool   // disable thumbnail generation entirely
 	ChromeNoSandbox bool   // add --no-sandbox (required to render as root in a container)
+	WriteToken      string // shared bearer token required for write API calls; empty = writes open
 }
 
 var templateFuncs = template.FuncMap{
@@ -158,6 +160,12 @@ func New(cfg Config) (*Server, error) {
 		log.Printf("Thumbnails: %s (Chrome starts on first request)", thumbsDir)
 	}
 
+	if cfg.WriteToken == "" {
+		log.Printf("WARNING: no write token set (--write-token / SERVE_ARTIFACTS_WRITE_TOKEN); the artifact write API (push/modify) is UNAUTHENTICATED")
+	} else {
+		log.Printf("Artifact write API requires a bearer token")
+	}
+
 	return &Server{
 		scanner:            scanner,
 		index:              newSearchIndex(scanner, projectNames),
@@ -167,6 +175,7 @@ func New(cfg Config) (*Server, error) {
 		dir:                cfg.Dir,
 		port:               cfg.Port,
 		watch:              cfg.Watch,
+		writeToken:         cfg.WriteToken,
 		watcher:            w,
 		precompiled:        precompiled,
 		indexTemplate:      indexTmpl,
