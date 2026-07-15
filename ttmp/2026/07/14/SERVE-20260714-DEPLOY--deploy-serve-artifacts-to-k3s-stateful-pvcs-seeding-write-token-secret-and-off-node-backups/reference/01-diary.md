@@ -132,8 +132,44 @@ Wrote the three runbook scripts the deployment needs but that live outside the m
 ### Code review instructions
 - Read the three scripts; dry-run intent is documented inline. Validate against the runbook in the design doc Part VIII.
 
+## Step 4: Migrate CI to the GitHub-App-via-Vault GitOps-PR mechanism
+
+The user pointed out the gitops push-permission mechanism was updated. Checked `~/code/wesen/go-go-golems/publish-vault` (workflow + `docs/github-app-gitops-pr-automation-guide.md`): the long-lived `GITOPS_PR_TOKEN` PAT is gone. Migrated serve-artifacts' `publish-image.yaml` from the old inline-build + vendored `open_gitops_pr.py` + PAT to *calling the shared reusable workflow* with `gitops_pr_token_source: github_app`, which mints a short-lived GitHub App installation token via Vault OIDC at run time.
+
+### Prompt Context
+
+**User prompt (verbatim):** "I think we updated the way to get gitops push permission, look in the more recent ~/code/wesen/go-go-golems/publish-vault to see how it is done."
+
+**Assistant interpretation:** Adopt the current GitHub-App-via-Vault mechanism for serve-artifacts' GitOps PRs.
+
+**Inferred user intent:** Don't rely on the deprecated PAT; use the standardized token flow.
+
+**Commit (code):** serve-artifacts docs/CI commit (this ticket).
+
+### What I did
+- Rewrote `.github/workflows/publish-image.yaml` to `uses: go-go-golems/infra-tooling/.github/workflows/publish-ghcr-image.yml@main` with `secrets: inherit`, `id-token: write`, `gitops_pr_token_source: github_app`, `vault_role: serve-artifacts-gitops-pr`, `gitops_app_secret_path: kv/data/ci/github/serve-artifacts/gitops-pr-app`, `gitops_app_owner: wesen`, `gitops_app_repositories: 2026-03-27--hetzner-k3s`.
+- Removed the now-superseded vendored `scripts/open_gitops_pr.py` (its logic lives in the infra-tooling `open-gitops-pr` action).
+- Updated the design guide Part II to describe the OIDC→Vault→GitHub-App-token flow and the one-time provisioning.
+- Validated the workflow YAML; confirmed `deploy/gitops-targets.json` matches the reusable workflow's expected schema (name/gitops_repo/gitops_branch/manifest_path/container_name).
+
+### Why
+- A per-run, auto-expiring, repo-scoped GitHub App token removes the PAT-expiry failure mode and keeps no long-lived cross-repo credential in the repo.
+
+### What I learned
+- The friendly app slug used for Vault role/KV paths is not the repo name (publish-vault uses `retro-obsidian-publish`). For serve-artifacts I chose `serve-artifacts`; the Vault role `serve-artifacts-gitops-pr` and KV path `kv/ci/github/serve-artifacts/gitops-pr-app` must be provisioned to match.
+
+### What didn't work / not run
+- The provisioning (GitHub App install + Vault role + KV secret) is out-of-band and needs the operator; until it exists, image build/push works but the GitOps-PR step fails at Vault login. Documented in the guide.
+
+### What warrants a second pair of eyes
+- The chosen Vault role/path slug (`serve-artifacts`) — confirm it matches whatever gets provisioned in Terraform (`terraform/vault/github-actions/envs/k3s`).
+
+### Code review instructions
+- Read `.github/workflows/publish-image.yaml`; compare against `publish-vault/.github/workflows/publish-image.yaml`. The provisioning checklist is in publish-vault's `docs/github-app-gitops-pr-automation-guide.md`.
+
 ## Related
 
-- `design/01-deploying-serve-artifacts-to-k3s-...md` — the spec these steps implement.
+- `design/01-deploying-serve-artifacts-to-k3s-...md` — the spec these steps implement (Part II updated for the GitHub-App token flow).
+- `~/code/wesen/go-go-golems/publish-vault/docs/github-app-gitops-pr-automation-guide.md` — the canonical provisioning guide for the token mechanism.
 - hetzner-k3s branch `feat/serve-artifacts-stateful-backup` (commit `39e5978`) — the manifests (not pushed; ready to PR).
 - `SERVE-20260714-ARTIFACTAPI` — the write API whose token this deployment now enforces.

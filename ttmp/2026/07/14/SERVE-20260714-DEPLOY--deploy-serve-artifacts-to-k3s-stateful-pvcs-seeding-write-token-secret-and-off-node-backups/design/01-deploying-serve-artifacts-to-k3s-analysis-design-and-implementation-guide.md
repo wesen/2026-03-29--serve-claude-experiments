@@ -107,7 +107,7 @@ You are extending a working delivery pipeline, not building one. Understand its 
 flowchart LR
   DEV["git push main\n(serve-artifacts repo)"] --> CI["GitHub Actions\npublish-image.yaml"]
   CI -->|build + test| IMG["ghcr.io/wesen/2026-03-29--serve-claude-experiments:sha-<short>"]
-  CI -->|gitops-pr job\nopen_gitops_pr.py| PR["PR to wesen/2026-03-27--hetzner-k3s\nbumps gitops/kustomize/artifacts/deployment.yaml"]
+  CI -->|OIDC→Vault→GitHub App token| PR["PR to wesen/2026-03-27--hetzner-k3s\nbumps gitops/kustomize/artifacts/deployment.yaml"]
   PR -->|merge| GIT["GitOps repo main"]
   GIT -->|auto-sync| ARGO["ArgoCD Application 'artifacts'"]
   ARGO --> K8S["Deployment → Service → Ingress\nartifacts.yolo.scapegoat.dev"]
@@ -115,11 +115,13 @@ flowchart LR
   style GIT fill:#fde68a
 ```
 
-- **Build + publish** (`.github/workflows/publish-image.yaml` in this repo): on push to `main`, run `go test`, build the `Dockerfile`, push to GHCR with an immutable `sha-<short>` tag (plus `main`/`latest`).
-- **GitOps PR** (same workflow, `gitops-pr` job → `scripts/open_gitops_pr.py` reading `deploy/gitops-targets.json`): clone the GitOps repo `wesen/2026-03-27--hetzner-k3s`, rewrite the `image:` of the container named `serve-artifacts` in `gitops/kustomize/artifacts/deployment.yaml`, and open a PR. Requires the `GITOPS_PR_TOKEN` repo secret (a PAT/Actions token that can push + open PRs on the GitOps repo).
+- **Build + publish** (`.github/workflows/publish-image.yaml` in this repo): the workflow *calls the shared reusable workflow* `go-go-golems/infra-tooling/.github/workflows/publish-ghcr-image.yml@main` (rather than building inline). On push to `main` it runs `go test`, builds the `Dockerfile`, and pushes to GHCR with an immutable `sha-<short>` tag.
+- **GitOps PR** (same reusable workflow, gated to `main`, reading `deploy/gitops-targets.json`): rewrite the `image:` of the container named `serve-artifacts` in `gitops/kustomize/artifacts/deployment.yaml` and open a PR. **Cross-repo push permission is a GitHub App token minted at run time**, not a stored PAT: GitHub Actions authenticates to Vault via OIDC (`id-token: write`, role `serve-artifacts-gitops-pr`), reads a GitHub App's `app_id`/`private_key` from Vault (`kv/data/ci/github/serve-artifacts/gitops-pr-app`), and `actions/create-github-app-token` mints a short-lived installation token scoped to `2026-03-27--hetzner-k3s`. The token expires automatically; there is no `GITOPS_PR_TOKEN` secret to rotate. (This mirrors `publish-vault`; see its `docs/github-app-gitops-pr-automation-guide.md`.)
 - **ArgoCD** (GitOps repo `gitops/applications/artifacts.yaml`): the `artifacts` Application watches `gitops/kustomize/artifacts` with `automated: {prune, selfHeal}`, so a merged PR reconciles automatically. The Application had to be `kubectl apply`-ed once (it already was — the app exists today).
 
 The key ownership rule: **image bumps are automatic; structural changes (PVCs, secrets, backups) are a manual PR to the GitOps repo.** This guide's implementation is exactly that manual PR.
+
+**One-time provisioning for the GitHub App flow** (an operator does this once, out of band): create a GitHub App (`Contents: RW`, `Pull requests: RW`) installed only on `wesen/2026-03-27--hetzner-k3s`; store its `app_id` + `private_key` in Vault at `kv/ci/github/serve-artifacts/gitops-pr-app`; create the Vault kubernetes/JWT role `serve-artifacts-gitops-pr` bound to trusted `main` pushes from this repo, with a policy that reads that KV path. Until this exists the build+push succeeds but the GitOps-PR step fails at Vault login / token minting.
 
 ## Part III — Cluster conventions (what the GitOps repo already standardizes)
 
