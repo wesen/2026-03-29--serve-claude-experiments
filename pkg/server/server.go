@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alecthomas/chroma/v2"
@@ -59,6 +60,11 @@ type Server struct {
 	artifactTemplate   *template.Template
 	transcriptTemplate *template.Template
 	markdown           goldmark.Markdown
+
+	// writeMu serializes mutations of the artifact corpus (manifest writes and
+	// artifact pushes) so a "validate → write → rebuild" sequence is atomic with
+	// respect to other writers. Reads are unaffected (they take the index RLock).
+	writeMu sync.Mutex
 }
 
 // Config holds server configuration.
@@ -220,32 +226,7 @@ func (s *Server) Run(ctx context.Context) error {
 		return fmt.Errorf("building search index: %w", err)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", s.handleIndex)
-	mux.HandleFunc("GET /search-index.json", s.handleSearchIndex)
-	mux.HandleFunc("GET /search", s.handleSearch)
-	mux.HandleFunc("POST /api/favorite", s.handleFavorite)
-	mux.HandleFunc("POST /api/tags/add", s.handleTagAdd)
-	mux.HandleFunc("POST /api/tags/remove", s.handleTagRemove)
-	mux.HandleFunc("GET /api/collections", s.handleCollectionsList)
-	mux.HandleFunc("POST /api/collections", s.handleCollectionCreate)
-	mux.HandleFunc("DELETE /api/collections/{id}", s.handleCollectionDelete)
-	mux.HandleFunc("POST /api/collections/{id}/items", s.handleCollectionAddItem)
-	mux.HandleFunc("DELETE /api/collections/{id}/items", s.handleCollectionRemoveItem)
-	// {name...} matches multi-segment names so artifacts in nested subdirectories
-	// (e.g. "<uuid>/artifacts/Calendar") resolve.
-	mux.HandleFunc("GET /view/{name...}", s.handleView)
-	mux.HandleFunc("GET /raw/{name...}", s.handleRaw)
-	mux.HandleFunc("GET /compiled/{name...}", s.handleCompiledJSX)
-	mux.HandleFunc("GET /jsx/{name...}", s.handleJSX)
-	mux.HandleFunc("GET /thumb/{name...}", s.handleThumb)
-	mux.HandleFunc("POST /thumb/{name...}", s.handleThumbSave)
-	mux.HandleFunc("POST /api/thumb/rerender/{name...}", s.handleThumbRerender)
-	mux.HandleFunc("GET /artifact/{name...}", s.handleArtifactPage)
-	mux.HandleFunc("GET /api/artifact/{name...}", s.handleArtifactJSON)
-	mux.HandleFunc("GET /transcript/{name...}", s.handleTranscript)
-	mux.HandleFunc("GET /highlight/{name...}", s.handleHighlight)
-	mux.HandleFunc("GET /session/{name...}", s.handleSession)
+	mux := s.registerRoutes()
 
 	if s.watch && s.watcher != nil {
 		// Rebuild the index whenever the directory changes, before clients reload.
@@ -290,6 +271,49 @@ func (s *Server) Run(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// registerRoutes builds the ServeMux with every application route (everything
+// except the watch-mode /events SSE endpoint, which Run adds conditionally). It is
+// separate from Run so tests can exercise the full router without starting a
+// listener or a file watcher.
+func (s *Server) registerRoutes() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", s.handleIndex)
+	mux.HandleFunc("GET /search-index.json", s.handleSearchIndex)
+	mux.HandleFunc("GET /search", s.handleSearch)
+	mux.HandleFunc("POST /api/favorite", s.handleFavorite)
+	mux.HandleFunc("POST /api/tags/add", s.handleTagAdd)
+	mux.HandleFunc("POST /api/tags/remove", s.handleTagRemove)
+	mux.HandleFunc("GET /api/collections", s.handleCollectionsList)
+	mux.HandleFunc("POST /api/collections", s.handleCollectionCreate)
+	mux.HandleFunc("DELETE /api/collections/{id}", s.handleCollectionDelete)
+	mux.HandleFunc("POST /api/collections/{id}/items", s.handleCollectionAddItem)
+	mux.HandleFunc("DELETE /api/collections/{id}/items", s.handleCollectionRemoveItem)
+	// {name...} matches multi-segment names so artifacts in nested subdirectories
+	// (e.g. "<uuid>/artifacts/Calendar") resolve.
+	mux.HandleFunc("GET /view/{name...}", s.handleView)
+	mux.HandleFunc("GET /raw/{name...}", s.handleRaw)
+	mux.HandleFunc("GET /compiled/{name...}", s.handleCompiledJSX)
+	mux.HandleFunc("GET /jsx/{name...}", s.handleJSX)
+	mux.HandleFunc("GET /thumb/{name...}", s.handleThumb)
+	mux.HandleFunc("POST /thumb/{name...}", s.handleThumbSave)
+	mux.HandleFunc("POST /api/thumb/rerender/{name...}", s.handleThumbRerender)
+	mux.HandleFunc("GET /artifact/{name...}", s.handleArtifactPage)
+	mux.HandleFunc("GET /api/artifact/{name...}", s.handleArtifactJSON)
+	// Artifact-management API (list / view source / modify / push). Reads are open;
+	// writes flow through requireWrite (the authorize seam) — see artifactapi.go.
+	// NOTE: Go's ServeMux only allows a {name...} wildcard as the final segment, so
+	// the action is the path prefix (/api/source, /api/manifest), not a suffix.
+	mux.HandleFunc("GET /api/artifacts", s.handleSearch) // list == search, same {total,results,facets}
+	mux.HandleFunc("POST /api/artifacts", s.requireWrite(s.handleArtifactPush))
+	mux.HandleFunc("GET /api/source/{name...}", s.handleArtifactSource)
+	mux.HandleFunc("PUT /api/manifest/{name...}", s.requireWrite(s.handleManifestPut))
+	mux.HandleFunc("PATCH /api/manifest/{name...}", s.requireWrite(s.handleManifestPatch))
+	mux.HandleFunc("GET /transcript/{name...}", s.handleTranscript)
+	mux.HandleFunc("GET /highlight/{name...}", s.handleHighlight)
+	mux.HandleFunc("GET /session/{name...}", s.handleSession)
+	return mux
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -815,10 +839,21 @@ func (s *Server) backfillThumbnails(ctx context.Context) {
 // availability and warnings, for the detail page.
 func (s *Server) handleArtifactJSON(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if !s.writeArtifactView(w, r, name) {
+		http.NotFound(w, r)
+	}
+}
+
+// writeArtifactView writes the single-artifact detail JSON (the SearchDocument
+// enriched with the acting user's favorite/tags/render status plus transcript,
+// warnings and project) for the artifact named `name`. It returns false without
+// writing anything when the artifact does not exist, so callers can map that to a
+// 404. The modify and push handlers reuse it to return the applied result in the
+// same shape the detail page already consumes.
+func (s *Server) writeArtifactView(w http.ResponseWriter, r *http.Request, name string) bool {
 	art, err := s.scanner.FindByName(name)
 	if err != nil {
-		http.NotFound(w, r)
-		return
+		return false
 	}
 	doc := buildSearchDocument(*art)
 	if hash, ok := s.index.hashByName(name); ok {
@@ -835,8 +870,8 @@ func (s *Server) handleArtifactJSON(w http.ResponseWriter, r *http.Request) {
 	doc.UserTags = userTags
 	doc.Tags = mergeTags(art.Tags, userTags)
 	project := art.Project
-	if name, ok := s.projectNames[project]; ok && name != "" {
-		project = name
+	if pn, ok := s.projectNames[project]; ok && pn != "" {
+		project = pn
 	}
 	writeJSON(w, map[string]any{
 		"artifact":       doc,
@@ -847,6 +882,7 @@ func (s *Server) handleArtifactJSON(w http.ResponseWriter, r *http.Request) {
 		"project":        project,
 		"created_at":     art.ConversationCreatedAt,
 	})
+	return true
 }
 
 // mergeTags returns manifest tags plus user tags, deduped case-insensitively.
