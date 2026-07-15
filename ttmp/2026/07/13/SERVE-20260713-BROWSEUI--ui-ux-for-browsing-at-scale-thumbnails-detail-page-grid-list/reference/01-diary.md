@@ -995,3 +995,47 @@ The gallery lightbox (🔍) showed the 480px thumbnail scaled up, so it was soft
 
 ### Technical details
 - Full path `<hash>-<ver>-full.png`; full ETag `"<hash>-<ver>-full"`; render viewport unchanged at 1200×900.
+
+## Step 22: Drop implausible (future-dated) models on old artifacts
+
+After legacy artifacts were recovered, every pre-2025 artifact showed `claude-sonnet-4-5-20250929` — a 2025 model on a 2024 conversation. The cause is upstream: claude.ai's API returns the account's *current* default model for old conversations (the `model` field, both conversation- and message-level, is rewritten), so the historical model isn't recoverable. This step suppresses the obviously-wrong labels rather than display an impossible model.
+
+### Prompt Context
+
+**User prompt (verbatim):** "somethings wrong with the detection of the model, because claude-sonnet-4-5-20250509 was obv not there in 2024-06-20"
+
+**Assistant interpretation:** The model shown on old artifacts is impossibly new; don't show a model that postdates the conversation.
+
+**Inferred user intent:** Trustworthy model labels — no anachronisms.
+
+**Commit (code):** 4c2f185 — "fix: drop implausible (future-dated) models from old artifacts"
+
+### What I did
+- Confirmed via the raw `conversation.json`: a 2024-12-07 conversation carries `claude-sonnet-4-5-20250929` at both meta and message level (the API's current default). All 70 pre-2025 artifacts had this, all with a `-YYYYMMDD` suffix.
+- Added `plausibleModel(model, updatedAt)` in `pkg/artifacts/scanner.go`: if the model's trailing `-YYYYMMDD` is later than the conversation's `updated_at` day, return "" (drop it); suffixless models are kept. Applied it at `a.Model = plausibleModel(meta.Model, meta.UpdatedAt)` in `enrichFromExportMeta`. Unit test in `scanner_test.go`.
+
+### Why
+- A model cannot predate a conversation it "used"; if the model's release date is after the conversation's last activity, the value is the API default, not history — so blanking is strictly more truthful than showing it.
+- Using `updated_at` (last activity) rather than `created_at` is the tight bound: it only drops truly-impossible models, not legitimate later continuations.
+
+### What worked
+- After restart, the 70 old artifacts show no model, and the model facet's `claude-sonnet-4-5-20250929` count fell from 86 → 16 (the 16 genuine 2025 ones). Tests green.
+
+### What didn't work / limitation
+- The **true** historical model is unrecoverable (the API overwrote it), so we can only *suppress* the wrong one, not restore the right one. Suffixless anachronisms (e.g. a hypothetical date-less new-gen model on an old conversation) aren't caught — none exist in this data, but noted.
+
+### What was tricky to build
+- Choosing the reference date: `created_at` would over-blank legitimate recent continuations; `updated_at` blanks only the impossible cases.
+
+### What warrants a second pair of eyes
+- The date comparison is lexical on `YYYYMMDD` strings (safe because zero-padded fixed width) and the regex `-(\d{8})$`.
+
+### What should be done in the future
+- If a historical-model source ever exists (per-message model at send time), prefer it. Otherwise leave blank.
+
+### Code review instructions
+- `pkg/artifacts/scanner.go`: `plausibleModel` + its call site in `enrichFromExportMeta`; `scanner_test.go` `TestPlausibleModel`.
+- Validate: model facet no longer shows a model dated after a pre-2025 artifact; `go test ./pkg/artifacts/ -run PlausibleModel`.
+
+### Technical details
+- Drop when `model[-8:] (YYYYMMDD) > updated_at[:10] without dashes`. 70 artifacts blanked.

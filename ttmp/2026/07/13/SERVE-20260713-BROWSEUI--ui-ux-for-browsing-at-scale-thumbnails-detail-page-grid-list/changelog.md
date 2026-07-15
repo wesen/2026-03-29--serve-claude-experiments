@@ -67,3 +67,8 @@ Step 20: mobile hamburger drawer — search/filters/facets fold into a sticky un
 
 Step 21: full-resolution capture stored (<hash>-full.png) and served to the gallery lightbox via /thumb?full=1; small thumbnails still 480px (commit a5ab6e5)
 
+
+## 2026-07-14
+
+Step 22: drop implausible future-dated models (API returns current default for old convos); blanked 70 pre-2025 artifacts mislabeled claude-sonnet-4-5-20250929 (commit 4c2f185)
+
