@@ -1,0 +1,18 @@
+services:
+  serve-artifacts:
+    build: .
+    image: serve-artifacts
+    ports:
+      - "8080:8080"
+    volumes:
+      # Your artifact directory (read-only is fine). Remove this line to use the
+      # sample library baked into the image.
+      - ./imports:/artifacts:ro
+      # Persist generated thumbnails + favorites/tags/collections across restarts.
+      - serve-artifacts-data:/data
+    restart: unless-stopped
+    # Thumbnail rendering (headless Chrome) needs outbound HTTPS to fetch React
+    # (esm.sh) and Babel (unpkg) for JSX artifacts on first render.
+
+volumes:
+  serve-artifacts-data:

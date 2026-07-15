@@ -66,3 +66,18 @@ export default LogicAnalyzer;
 		})
 	}
 }
+
+func TestPlausibleModel(t *testing.T) {
+	// Model release date after the conversation's last activity → dropped (API default).
+	if got := plausibleModel("claude-sonnet-4-5-20250929", "2024-12-07T00:00:00Z"); got != "" {
+		t.Fatalf("future-dated model should be dropped, got %q", got)
+	}
+	// Model that existed by then → kept.
+	if got := plausibleModel("claude-3-5-sonnet-20240620", "2024-12-07T00:00:00Z"); got != "claude-3-5-sonnet-20240620" {
+		t.Fatalf("valid model dropped: %q", got)
+	}
+	// No date suffix → left as-is (can't verify).
+	if got := plausibleModel("claude-opus-4-8", "2024-01-01T00:00:00Z"); got != "claude-opus-4-8" {
+		t.Fatalf("suffixless model changed: %q", got)
+	}
+}

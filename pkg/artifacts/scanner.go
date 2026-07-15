@@ -3,6 +3,7 @@ package artifacts
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -25,6 +26,19 @@ type Artifact struct {
 	ManifestPath  string         // absolute path to manifest, if present
 	HasManifest   bool           // whether a companion manifest file was found
 	ManifestError string         // validation or parse error for the manifest, if any
+
+	// Provenance, ingested from a conversation export's meta.json when the
+	// artifact lives at "<conversation-uuid>/artifacts/<file>". Empty otherwise.
+	FromExport              bool     // true when a sibling export meta.json was found
+	SourceConversationUUID  string   // meta.json uuid
+	SourceConversationTitle string   // meta.json name (the conversation title)
+	Project                 string   // meta.json project_uuid (empty when unfiled)
+	Model                   string   // meta.json model
+	ConversationCreatedAt   string   // meta.json created_at (RFC3339)
+	ConversationUpdatedAt   string   // meta.json updated_at (RFC3339)
+	TranscriptPath          string   // abs path to <uuid>/conversation.md, if present
+	ClaudeURL               string   // https://claude.ai/chat/<uuid>
+	Warnings                []string // conversation reconstruction warnings
 }
 
 // Scanner reads a directory for artifact files.
@@ -37,62 +51,99 @@ func NewScanner(dir string) *Scanner {
 	return &Scanner{dir: dir}
 }
 
-// Scan reads the directory and returns all artifacts.
+// Scan walks the directory tree (recursively) and returns all artifacts. An
+// artifact's Name is its slash-separated path relative to the root, without the
+// extension — so a top-level "business-app.jsx" keeps Name "business-app" (as
+// before), while a nested "abc123/artifacts/Calendar.jsx" gets a unique Name
+// "abc123/artifacts/Calendar". Companion manifests are matched by the same
+// relative key within the same directory.
 func (s *Scanner) Scan() ([]Artifact, error) {
-	entries, err := os.ReadDir(s.dir)
-	if err != nil {
-		return nil, fmt.Errorf("reading artifact directory: %w", err)
+	type fileEntry struct {
+		rel  string // slash path relative to root, without extension
+		abs  string
+		name string // base filename
+		typ  string
+		info os.FileInfo
 	}
 
-	manifests := make(map[string]string)
-	for _, entry := range entries {
-		if entry.IsDir() || !isManifestFile(entry.Name()) {
-			continue
+	var files []fileEntry
+	manifests := make(map[string]string) // rel-without-suffix -> manifest abs path
+
+	err := filepath.WalkDir(s.dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil // skip unreadable entries rather than aborting the whole scan
 		}
-		baseName := strings.TrimSuffix(entry.Name(), manifestSuffix)
-		absPath, _ := filepath.Abs(filepath.Join(s.dir, entry.Name()))
-		manifests[baseName] = absPath
+		if d.IsDir() {
+			if path != s.dir && shouldSkipDir(d.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, relErr := filepath.Rel(s.dir, path)
+		if relErr != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		abs, _ := filepath.Abs(path)
+
+		if isManifestFile(d.Name()) {
+			key := strings.TrimSuffix(rel, manifestSuffix)
+			manifests[key] = abs
+			return nil
+		}
+
+		var typ string
+		switch filepath.Ext(d.Name()) {
+		case ".html", ".htm":
+			typ = "html"
+		case ".jsx":
+			typ = "jsx"
+		default:
+			return nil
+		}
+		info, infoErr := d.Info()
+		if infoErr != nil {
+			return nil
+		}
+		files = append(files, fileEntry{
+			rel:  strings.TrimSuffix(rel, filepath.Ext(d.Name())),
+			abs:  abs,
+			name: d.Name(),
+			typ:  typ,
+			info: info,
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scanning artifact directory: %w", err)
 	}
+
+	metaCache := make(map[string]*exportMeta) // conversation dir -> parsed meta.json (nil = none)
 
 	var artifacts []Artifact
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		ext := filepath.Ext(entry.Name())
-		var artifactType string
-		switch ext {
-		case ".html", ".htm":
-			artifactType = "html"
-		case ".jsx":
-			artifactType = "jsx"
-		default:
-			continue
-		}
-
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-
-		name := strings.TrimSuffix(entry.Name(), ext)
-		absPath, _ := filepath.Abs(filepath.Join(s.dir, entry.Name()))
-		title := extractTitle(absPath, artifactType)
+	for _, fe := range files {
+		title := extractTitle(fe.abs, fe.typ)
 		if title == "" {
-			title = name
+			title = path.Base(fe.rel)
 		}
-
 		artifact := Artifact{
-			Name:       name,
-			Filename:   entry.Name(),
-			Type:       artifactType,
+			Name:       fe.rel,
+			Filename:   fe.name,
+			Type:       fe.typ,
 			Title:      title,
-			Size:       info.Size(),
-			ModifiedAt: info.ModTime(),
-			Path:       absPath,
+			Size:       fe.info.Size(),
+			ModifiedAt: fe.info.ModTime(),
+			Path:       fe.abs,
 		}
 
-		if manifestPath, ok := manifests[name]; ok {
+		// Provenance: an artifact at "<uuid>/artifacts/<file>" is described by
+		// "<uuid>/meta.json". Enrich BEFORE the manifest overlay so a manifest
+		// title still wins (precedence: manifest > conversation name > derived).
+		if meta := lookupExportMeta(fe.abs, metaCache); meta != nil {
+			enrichFromExportMeta(&artifact, meta, filepath.Dir(filepath.Dir(fe.abs)))
+		}
+
+		if manifestPath, ok := manifests[fe.rel]; ok {
 			artifact.HasManifest = true
 			artifact.ManifestPath = manifestPath
 			manifest, err := loadManifest(manifestPath)
@@ -102,10 +153,90 @@ func (s *Scanner) Scan() ([]Artifact, error) {
 				applyManifest(&artifact, manifest)
 			}
 		}
-
 		artifacts = append(artifacts, artifact)
 	}
 	return artifacts, nil
+}
+
+// lookupExportMeta returns the conversation export meta.json for an artifact at
+// "<conversation>/artifacts/<file>", or nil when the artifact is not laid out
+// that way or has no meta.json. Results (including misses) are cached per
+// conversation directory so each meta.json is read at most once per scan.
+func lookupExportMeta(absFilePath string, cache map[string]*exportMeta) *exportMeta {
+	artifactsDir := filepath.Dir(absFilePath)
+	if filepath.Base(artifactsDir) != "artifacts" {
+		return nil
+	}
+	convDir := filepath.Dir(artifactsDir)
+	if cached, seen := cache[convDir]; seen {
+		return cached
+	}
+	var meta *exportMeta
+	if m, err := loadExportMeta(filepath.Join(convDir, "meta.json")); err == nil {
+		meta = m
+	}
+	cache[convDir] = meta
+	return meta
+}
+
+// enrichFromExportMeta copies conversation provenance onto the artifact. It sets
+// the title from the conversation name only when no better (manifest) title has
+// been applied yet — the manifest overlay runs afterwards and still wins.
+func enrichFromExportMeta(a *Artifact, meta *exportMeta, convDir string) {
+	a.FromExport = true
+	a.SourceConversationUUID = meta.UUID
+	a.SourceConversationTitle = meta.Name
+	a.Project = meta.ProjectUUID
+	a.Model = plausibleModel(meta.Model, meta.UpdatedAt)
+	a.ConversationCreatedAt = meta.CreatedAt
+	a.ConversationUpdatedAt = meta.UpdatedAt
+	a.Warnings = append([]string(nil), meta.Warnings...)
+	if meta.UUID != "" {
+		a.ClaudeURL = "https://claude.ai/chat/" + meta.UUID
+	}
+	if transcript := filepath.Join(convDir, "conversation.md"); fileExists(transcript) {
+		a.TranscriptPath = transcript
+	}
+	if a.OriginalDate == "" {
+		a.OriginalDate = dateOnly(meta.CreatedAt)
+	}
+	// Conversation name is a better default than a component/HTML-derived title.
+	if strings.TrimSpace(meta.Name) != "" {
+		a.Title = meta.Name
+	}
+}
+
+var modelDateSuffixRe = regexp.MustCompile(`-(\d{8})$`)
+
+// plausibleModel drops a model whose embedded release date (…-YYYYMMDD) is after
+// the conversation's last activity. claude.ai reports the account's *current*
+// default model for old conversations, not the one actually used, so such a
+// model is impossible and misleading (e.g. a 2024-12-07 conversation labeled
+// claude-sonnet-4-5-20250929). Models without a date suffix are left as-is.
+func plausibleModel(model, updatedAt string) string {
+	m := modelDateSuffixRe.FindStringSubmatch(model)
+	if m == nil || len(updatedAt) < 10 {
+		return model
+	}
+	conv := strings.ReplaceAll(updatedAt[:10], "-", "") // YYYYMMDD
+	if m[1] > conv {
+		return ""
+	}
+	return model
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+// shouldSkipDir skips noise directories during the recursive walk.
+func shouldSkipDir(name string) bool {
+	switch name {
+	case "node_modules", ".git", ".svn", "__pycache__":
+		return true
+	}
+	return strings.HasPrefix(name, ".")
 }
 
 // FindByName finds an artifact by its name (filename without extension).

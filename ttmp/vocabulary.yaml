@@ -11,6 +11,20 @@ topics:
       description: Go programming language
     - slug: web-server
       description: HTTP web server
+    - slug: api
+      description: HTTP/REST API surfaces and contracts
+    - slug: cli
+      description: Command-line interfaces and glazed verbs
+    - slug: auth
+      description: Authentication and authorization
+    - slug: deployment
+      description: Kubernetes/GitOps deployment and rollout
+    - slug: kubernetes
+      description: k8s manifests, ArgoCD, cluster ops
+    - slug: gitops
+      description: GitOps/ArgoCD desired-state flow
+    - slug: backup
+      description: Backups, snapshots, disaster recovery
 docTypes:
     - slug: design-doc
       description: Structured rationale and architecture notes

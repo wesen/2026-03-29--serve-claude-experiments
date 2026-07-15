@@ -1,0 +1,14 @@
+# Keep the build context small and reproducible. The Dockerfile only COPYs
+# go.mod/go.sum, cmd, pkg, and imports — everything else is noise.
+.git
+.gitignore
+ttmp
+.playwright-mcp
+*.png
+*.pdf
+Dockerfile
+.dockerignore
+docker-compose.yml
+README*.md
+serve-artifacts
+serve-go

@@ -6,268 +6,738 @@
 <title>Claude Artifact Server</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
   body {
     font-family: 'Geneva', 'Helvetica Neue', Helvetica, sans-serif;
     font-size: 13px;
-    background: #aaa;
-    background-image: repeating-linear-gradient(0deg, transparent, transparent 1px, rgba(0,0,0,0.03) 1px, rgba(0,0,0,0.03) 2px);
-    min-height: 100vh;
-    padding: 30px;
-  }
-  .window {
-    max-width: 800px;
-    margin: 0 auto;
-    border: 2px solid #000;
-    box-shadow: 4px 4px 0 #000;
     background: #fff;
+    overflow: hidden; /* the app is a fixed-header shell; the results pane scrolls, not the window */
   }
-  .titlebar {
-    height: 22px;
-    background: repeating-linear-gradient(180deg, #fff 0px, #fff 1px, #000 1px, #000 2px);
-    border-bottom: 2px solid #000;
-    display: flex;
-    align-items: center;
-    padding: 0 8px;
-    position: relative;
-  }
-  .titlebar .close-box {
-    width: 14px; height: 14px;
-    border: 2px solid #000;
-    background: #fff;
-    flex-shrink: 0;
-  }
-  .titlebar .title {
-    position: absolute;
-    left: 50%; transform: translateX(-50%);
-    background: #fff;
-    padding: 0 10px;
-    font-weight: bold;
-    font-size: 12px;
-    white-space: nowrap;
-  }
-  .content {
-    padding: 20px;
-  }
-  .content h1 {
-    font-size: 16px;
-    margin-bottom: 4px;
-  }
-  .content .subtitle {
-    color: #666;
-    margin-bottom: 16px;
-    font-size: 11px;
-  }
-  .search-panel {
-    border: 1px solid #000;
-    padding: 10px 12px;
-    margin-bottom: 16px;
-    background: #f5f5f5;
-  }
-  .search-label {
-    display: block;
-    font-size: 11px;
-    font-weight: bold;
-    margin-bottom: 6px;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-  }
+  /* App shell: header (title + filter bar) stays put; only .layout (and within it,
+     the results pane and the facet sidebar) scroll. */
+  .content { max-width: 1200px; margin: 0 auto; padding: 20px 20px 0; height: 100vh; display: flex; flex-direction: column; }
+  .content h1 { font-size: 16px; margin-bottom: 2px; flex: none; }
+  .subtitle { color: #666; margin-bottom: 12px; font-size: 11px; flex: none; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; flex: none; }
   .search-input {
-    width: 100%;
-    border: 1px solid #000;
-    padding: 8px 10px;
-    font: inherit;
-    background: #fff;
+    flex: 1; min-width: 220px; font: inherit; padding: 6px 10px; border: 2px solid #000; background: #fff;
   }
-  .search-help {
-    margin-top: 6px;
-    color: #666;
-    font-size: 10px;
+  select { font: inherit; padding: 5px 6px; border: 2px solid #000; background: #fff; }
+  .count { font-size: 11px; color: #333; white-space: nowrap; }
+  .topbar { display: flex; align-items: baseline; gap: 10px; flex: none; margin-bottom: 2px; }
+  .topbar h1 { margin-bottom: 0; }
+  .topbar .count { margin-left: auto; }
+  .hamburger { display: none; font: inherit; font-size: 12px; padding: 5px 10px; border: 2px solid #000; background: #fff; box-shadow: 2px 2px 0 #000; cursor: pointer; white-space: nowrap; }
+  .drawer { display: none; }
+  .layout { display: grid; grid-template-columns: 200px 1fr; gap: 18px; flex: 1; min-height: 0; }
+  .facets { overflow-y: auto; padding-bottom: 20px; }
+  main { overflow-y: auto; padding-bottom: 20px; }
+  @media (max-width: 720px) {
+    .content { padding: 10px 12px 0; }
+    .subtitle { display: none; }
+    .hamburger { display: inline-block; }        /* the only always-visible control on mobile */
+    .topbar { position: sticky; top: 0; z-index: 120; background: #fff; padding: 4px 0; }
+    .layout { grid-template-columns: 1fr; }       /* facets get moved into the drawer, so results fill the width */
+    /* The drawer: an unfoldable overlay holding search + filters + facets, above
+       the results, so you can refine while scrolled down. */
+    .drawer.open { display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 110;
+                   overflow-y: auto; background: #fff; border-top: 2px solid #000; padding: 12px 14px 24px;
+                   box-shadow: 0 8px 24px rgba(0,0,0,0.25); -webkit-overflow-scrolling: touch; }
+    .drawer .toolbar { margin-bottom: 12px; }
+    .drawer .search-input { flex: 1 1 100%; min-width: 0; }  /* full-width, wraps the buttons below it */
+    .drawer .facets { border-right: none; padding-right: 0; overflow: visible; }
+    body.dark .topbar { background: #191919; }
+    body.dark .drawer.open { background: #191919; border-color: #777; }
   }
-  .artifact-list {
-    list-style: none;
-  }
-  .artifact-item {
-    border: 1px solid #000;
-    margin-bottom: 8px;
-    display: flex;
-    align-items: stretch;
-  }
-  .artifact-item:hover {
-    background: #f0f0f0;
-  }
-  .badge {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 50px;
-    font-size: 10px;
-    font-weight: bold;
-    letter-spacing: 0.5px;
-    border-right: 1px solid #000;
-    flex-shrink: 0;
-  }
-  .badge-html { background: #e8e8e8; }
-  .badge-jsx { background: #d0d0d0; }
-  .artifact-info {
-    padding: 8px 12px;
-    flex: 1;
-  }
-  .artifact-info a {
-    text-decoration: none;
-    color: #000;
-    font-weight: bold;
-    font-size: 13px;
-  }
-  .artifact-info a:hover {
-    text-decoration: underline;
-  }
-  .artifact-description {
-    margin-top: 6px;
-    color: #222;
-    font-size: 11px;
-    line-height: 1.35;
-  }
-  .artifact-meta {
-    font-size: 10px;
-    color: #666;
-    margin-top: 6px;
-  }
-  .artifact-tags {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    margin-top: 8px;
-  }
-  .tag {
-    border: 1px solid #000;
-    background: #efefef;
-    padding: 2px 6px;
-    font-size: 10px;
-  }
-  .artifact-links {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-top: 8px;
-    font-size: 10px;
-  }
-  .artifact-links a {
-    font-weight: normal;
-  }
-  .hidden {
-    display: none;
-  }
-  .no-results {
-    text-align: center;
-    color: #666;
-    padding: 20px;
-    border: 1px dashed #000;
-    margin-top: 12px;
-  }
-  .empty {
-    text-align: center;
-    color: #888;
-    padding: 40px 20px;
-  }
+  .facets { border-right: 1px dashed #999; padding-right: 14px; }
+  .facet-group { margin-bottom: 14px; }
+  .facet-group h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 2px solid #000; margin-bottom: 5px; padding-bottom: 2px; }
+  .facet-val { display: flex; justify-content: space-between; gap: 6px; cursor: pointer; padding: 2px 3px; font-size: 12px; }
+  .facet-val:hover { background: #000; color: #fff; }
+  .facet-val.active { background: #000; color: #fff; }
+  .facet-val .fcount { color: #888; }
+  .facet-val.active .fcount { color: #ccc; }
+  .clear { font-size: 11px; cursor: pointer; text-decoration: underline; color: #333; margin-bottom: 8px; display: inline-block; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .card { border: 2px solid #000; box-shadow: 2px 2px 0 #000; background: #fff; padding: 10px; display: flex; flex-direction: column; gap: 5px; }
+  .thumb-wrap { display: block; height: 150px; margin: -10px -10px 2px; border-bottom: 2px solid #000; background: #f2f2f2; overflow: hidden; position: relative; }
+  .thumb-wrap.skeleton { background: linear-gradient(90deg,#f2f2f2 25%,#e8e8e8 37%,#f2f2f2 63%); background-size: 400% 100%; animation: shimmer 1.3s ease-in-out infinite; }
+  @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+  .thumb { width: 100%; height: 150px; object-fit: cover; object-position: top center; display: block; }
+  .zoom { position: absolute; top: 6px; right: 6px; z-index: 2; background: #fff; border: 1px solid #000; box-shadow: 1px 1px 0 #000; font-size: 12px; line-height: 1; padding: 2px 5px; cursor: pointer; opacity: 0; transition: opacity .12s; }
+  .thumb-wrap:hover .zoom { opacity: 0.92; }
+  .zoom:hover { background: #000; }
+  /* gallery lightbox */
+  .lightbox { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; }
+  .lb-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 16px; color: #fff; font-size: 13px; background: linear-gradient(rgba(0,0,0,0.65), transparent); }
+  .lb-title { font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lb-actions { display: flex; gap: 14px; align-items: center; }
+  .lb-actions a { color: #cfe0ff; text-decoration: none; white-space: nowrap; }
+  .lb-actions a:hover { text-decoration: underline; }
+  .lb-btn { font: inherit; font-size: 16px; background: none; border: none; color: #fff; cursor: pointer; }
+  .lb-img { max-width: 92vw; max-height: 84vh; object-fit: contain; border: 1px solid #333; background: #fff; }
+  .lb-nav { position: absolute; top: 0; bottom: 0; width: 12vw; min-width: 70px; border: none; background: none; color: #fff; font-size: 48px; cursor: pointer; opacity: 0.55; }
+  .lb-nav:hover { opacity: 1; background: rgba(255,255,255,0.06); }
+  .lb-prev { left: 0; } .lb-next { right: 0; }
+  .lb-count { position: absolute; bottom: 12px; color: #ccc; font-size: 12px; }
+  .card a.card-title { font-weight: bold; font-size: 13px; text-decoration: none; color: #000; }
+  .card a.card-title:hover { text-decoration: underline; }
+  .badges { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+  .badge { font-size: 10px; border: 1px solid #000; padding: 0 4px; text-transform: uppercase; }
+  .badge.jsx { background: #dbeafe; } .badge.html { background: #dcfce7; }
+  .badge.warn { background: #fee2e2; border-color: #b91c1c; color: #b91c1c; }
+  .meta { font-size: 11px; color: #555; }
+  .tags { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tag { font-size: 10px; background: #eee; border: 1px solid #999; padding: 0 4px; cursor: pointer; }
+  .tag:hover { background: #000; color: #fff; }
+  .star { cursor: pointer; font-size: 15px; line-height: 1; color: #999; margin-right: 2px; user-select: none; }
+  .star.on { color: #e0a400; }
+  .tag-editor { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+  .utag { font-size: 10px; background: #eef6ff; border: 1px solid #7ab; padding: 0 3px; display: inline-flex; align-items: center; gap: 2px; }
+  .utag .x { cursor: pointer; color: #b00; font-weight: bold; }
+  .addtag { font-size: 10px; width: 60px; border: 1px dashed #999; padding: 0 3px; background: #fff; }
+  .links { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 10px; margin-top: 5px; }
+  .links a { color: #333; text-decoration: none; }
+  .links a:hover { text-decoration: underline; }
+  .lg, .rg { display: flex; gap: 8px; align-items: center; }
+  .addcol { font-size: 10px; border: 1px solid #000; background: #fff; padding: 1px 4px; max-width: 118px; cursor: pointer; }
+  .rmcol { color: #999; cursor: pointer; font-weight: bold; }
+  .rmcol:hover { color: #b00; }
+  .viewtoggle { display: inline-flex; }
+  .vbtn { font: inherit; font-size: 14px; line-height: 1; padding: 4px 9px; border: 2px solid #000; background: #fff; cursor: pointer; }
+  .vbtn + .vbtn { border-left: none; }
+  .vbtn.active { background: #000; color: #fff; }
+  /* list mode: reuse #grid but lay children out as rows */
+  .grid.list { display: block; grid-template-columns: none; }
+  .row { display: grid; grid-template-columns: 56px minmax(0,1fr) 52px 120px 90px 70px 20px; align-items: center; gap: 10px; border-bottom: 1px solid #ececec; padding: 6px 8px; background: #fff; }
+  .row:hover { background: #f7f7f7; }
+  .rthumb { width: 56px; height: 40px; overflow: hidden; border: 1px solid #999; background: #f2f2f2; display: block; }
+  .rthumb.skeleton { background: linear-gradient(90deg,#f2f2f2 25%,#e8e8e8 37%,#f2f2f2 63%); background-size: 400% 100%; animation: shimmer 1.3s ease-in-out infinite; }
+  .rthumb img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+  .rmain { min-width: 0; display: flex; align-items: baseline; gap: 8px; overflow: hidden; }
+  .rtitle { font-weight: bold; text-decoration: none; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rtitle:hover { text-decoration: underline; }
+  .rmeta { font-size: 11px; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .more { margin: 16px auto 0; display: block; font: inherit; padding: 6px 16px; border: 2px solid #000; background: #fff; box-shadow: 2px 2px 0 #000; cursor: pointer; }
+  .empty { padding: 30px; text-align: center; color: #666; }
+  .card.selected, .row.selected { outline: 3px solid #2563eb; outline-offset: 1px; }
+  /* advanced search panel */
+  .advanced { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 0 0 14px; padding: 8px 10px; border: 2px solid #000; background: #fafafa; font-size: 11px; flex: none; }
+  .advanced label { display: flex; gap: 5px; align-items: center; white-space: nowrap; }
+  .dateinput { font: inherit; font-size: 11px; padding: 2px 5px; border: 1px solid #000; background: #fff; }
+  .syntax-help { color: #555; line-height: 1.7; }
+  .syntax-help code { background: #eee; border: 1px solid #ccc; padding: 0 3px; margin: 0 1px; border-radius: 2px; }
+  /* command palette */
+  .palette-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; z-index: 1000; }
+  .palette-box { width: 560px; max-width: 92vw; background: #fff; border: 2px solid #000; box-shadow: 4px 4px 0 #000; }
+  .palette-input { width: 100%; font: inherit; font-size: 15px; padding: 10px 12px; border: none; border-bottom: 2px solid #000; outline: none; background: #fff; color: inherit; }
+  .palette-results { max-height: 50vh; overflow-y: auto; }
+  .pr { display: flex; gap: 8px; align-items: center; padding: 7px 12px; cursor: pointer; border-bottom: 1px solid #eee; }
+  .pr .pr-title { flex: 1; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pr .pr-meta { font-size: 11px; color: #777; }
+  .pr.sel { background: #2563eb; color: #fff; } .pr.sel .pr-meta { color: #dbe6ff; }
+  /* dark mode */
+  body.dark { background: #191919; color: #e6e6e6; }
+  body.dark .subtitle, body.dark .meta, body.dark .rmeta, body.dark .count, body.dark .empty, body.dark .facet-val .fcount { color: #9a9a9a; }
+  body.dark .search-input, body.dark select, body.dark .vbtn, body.dark .card, body.dark .row, body.dark .more, body.dark .palette-box, body.dark .palette-input { background: #262626; color: #e6e6e6; border-color: #777; }
+  body.dark .card { box-shadow: 2px 2px 0 #000; }
+  body.dark .card a.card-title, body.dark .rtitle, body.dark .clear, body.dark a { color: #cfe0ff; }
+  body.dark .facet-group h3, body.dark .facet-val { border-color: #555; }
+  body.dark .facet-val:hover, body.dark .facet-val.active, body.dark .vbtn.active, body.dark .tag:hover { background: #cfe0ff; color: #191919; }
+  body.dark .tag, body.dark .chip { background: #333; border-color: #666; color: #ddd; }
+  body.dark .utag { background: #24354d; border-color: #4a6fa5; color: #cfe0ff; }
+  body.dark .addtag, body.dark .addcol { background: #262626; color: #e6e6e6; border-color: #666; }
+  body.dark .thumb-wrap, body.dark .rthumb { border-color: #444; }
+  body.dark .row { border-bottom-color: #383838; }
+  body.dark .row:hover { background: #2f2f2f; }
+  body.dark .pr { border-color: #333; }
+  body.dark .advanced { background: #202020; border-color: #777; }
+  body.dark .advanced, body.dark .syntax-help { color: #9a9a9a; }
+  body.dark .dateinput { background: #262626; color: #e6e6e6; border-color: #666; }
+  body.dark .syntax-help code { background: #333; border-color: #555; color: #ddd; }
+  body.dark .palette-input { border-bottom-color: #777; }
 </style>
 </head>
 <body>
-  <div class="window">
-    <div class="titlebar">
-      <div class="close-box"></div>
-      <div class="title">Artifact Server</div>
-    </div>
-    <div class="content">
-      <h1>Claude Artifacts</h1>
-      <div class="subtitle">Serving from: {{.Dir}} &middot; {{len .Artifacts}} artifact{{if ne (len .Artifacts) 1}}s{{end}}</div>
-      <div class="search-panel">
-        <label class="search-label" for="artifact-filter">Filter Artifacts</label>
-        <input id="artifact-filter" class="search-input" type="text" list="artifact-suggestions" placeholder="Search by title, description, tag, filename, or date" autocomplete="off" />
-        <datalist id="artifact-suggestions"></datalist>
-        <div class="search-help">First pass only: type to filter locally in the browser. A richer search UX can layer on top of the same search bundle later.</div>
+  <div class="content">
+      <div class="topbar">
+        <button id="hamburger" class="hamburger" title="Search & filters">☰ Filters</button>
+        <h1>Artifacts</h1>
+        <span id="count" class="count"></span>
       </div>
-      {{if .Artifacts}}
-      <ul class="artifact-list">
-        {{range .Artifacts}}
-        <li class="artifact-item" data-artifact-name="{{.Name}}">
-          <div class="badge badge-{{.Type}}">{{.Type}}</div>
-          <div class="artifact-info">
-            <a href="/view/{{.Name}}">{{.Title}}</a>
-            {{if .Description}}<div class="artifact-description">{{.Description}}</div>{{end}}
-            <div class="artifact-meta">{{.Filename}}{{if .OriginalDate}} &middot; created {{.OriginalDate}}{{end}} &middot; {{.Size | humanSize}} &middot; {{.ModifiedAt.Format "2006-01-02 15:04"}}</div>
-            {{if .Tags}}
-            <div class="artifact-tags">
-              {{range .Tags}}<span class="tag">{{.}}</span>{{end}}
-            </div>
-            {{end}}
-            {{if .Links}}
-            <div class="artifact-links">
-              {{range .Links}}<a href="{{.URL}}" target="_blank" rel="noreferrer">{{.Label}}</a>{{end}}
-            </div>
-            {{end}}
-          </div>
-        </li>
-        {{end}}
-      </ul>
-      <div id="no-results" class="no-results hidden">No artifacts match the current filter.</div>
-      {{else}}
-      <div class="empty">No artifacts found. Drop .html or .jsx files into the directory.</div>
-      {{end}}
+      <div class="subtitle">Serving from <code>{{.Dir}}</code> — {{.Count}} artifacts</div>
+
+      <div class="toolbar">
+        <input id="q" class="search-input" type="text" placeholder="Search… (try tag:eink model:claude-fable-5 after:2026-06-01)" autocomplete="off" />
+        <button id="adv-btn" class="vbtn" title="Advanced search (dates + syntax)">⚙</button>
+        <select id="sort">
+          <option value="recent">Recent</option>
+          <option value="title">Title A–Z</option>
+          <option value="size">Largest</option>
+          <option value="-size">Smallest</option>
+          <option value="name">Path</option>
+        </select>
+        <span class="viewtoggle">
+          <button id="view-grid" class="vbtn" title="Grid view">▦</button>
+          <button id="view-list" class="vbtn" title="List view">☰</button>
+        </span>
+        <button id="theme" class="vbtn" title="Toggle dark mode (d)">◐</button>
+        <button id="palette-btn" class="vbtn" title="Command palette (⌘K)">⌘K</button>
+      </div>
+
+      <div id="advanced" class="advanced" style="display:none">
+        <label>After <input id="after" type="date" class="dateinput"></label>
+        <label>Before <input id="before" type="date" class="dateinput"></label>
+        <span class="syntax-help">Type in the box:
+          <code>tag:x</code> <code>model:x</code> <code>type:jsx</code>
+          <code>project:x</code> <code>library:x</code> <code>is:favorite</code>
+          <code>has:warnings</code> <code>after:YYYY-MM-DD</code> <code>before:YYYY-MM-DD</code>
+          — quote values with spaces: <code>tag:"multi word"</code>
+        </span>
+      </div>
+
+      <div class="layout">
+        <aside class="facets">
+          <span id="clear" class="clear" style="display:none">✕ clear filters</span>
+          <div id="collections"></div>
+          <div id="facets"></div>
+        </aside>
+        <main id="results">
+          <div id="grid" class="grid"></div>
+          <button id="more" class="more" style="display:none">Load more</button>
+          <div id="empty" class="empty" style="display:none">No artifacts match.</div>
+        </main>
+      </div>
+      <!-- On mobile, the toolbar, #advanced, and .facets are moved in here to form
+           an unfoldable drawer; on desktop they are moved back to their places. -->
+      <div id="drawer" class="drawer"></div>
+  </div>
+
+  <div id="lightbox" class="lightbox" style="display:none">
+    <div class="lb-bar">
+      <span id="lb-title" class="lb-title"></span>
+      <span class="lb-actions">
+        <a id="lb-open" target="_blank">open ▸</a>
+        <a id="lb-detail">details ▸</a>
+        <button id="lb-close" class="lb-btn" title="Close (Esc)">✕</button>
+      </span>
+    </div>
+    <button id="lb-prev" class="lb-nav lb-prev" title="Previous (←)">‹</button>
+    <img id="lb-img" class="lb-img" alt="">
+    <button id="lb-next" class="lb-nav lb-next" title="Next (→)">›</button>
+    <div id="lb-count" class="lb-count"></div>
+  </div>
+
+  <div id="palette" class="palette-overlay" style="display:none">
+    <div class="palette-box">
+      <input id="palette-input" class="palette-input" type="text" placeholder="Jump to an artifact…" autocomplete="off" />
+      <div id="palette-results" class="palette-results"></div>
     </div>
   </div>
-  <script>
-  (function() {
-    const input = document.getElementById("artifact-filter");
-    const suggestions = document.getElementById("artifact-suggestions");
-    const noResults = document.getElementById("no-results");
-    if (!input || !suggestions || !noResults) return;
 
-    const items = Array.from(document.querySelectorAll(".artifact-item"));
-    const itemMap = new Map(items.map((item) => [item.dataset.artifactName, item]));
+<script>
+(function(){
+  var PAGE = 60;
+  var state = { q: "", sort: "recent", type: "", project: "", model: "", library: "", warnings: false, favorite: false, collection: 0, tags: [], after: "", before: "", offset: 0, view: "grid" };
+  try { var sv = localStorage.getItem("view"); if (sv==="grid"||sv==="list") state.view = sv; } catch(e) {}
+  try { history.scrollRestoration = "manual"; } catch(e) {} // we restore scroll ourselves from the URL
+  var allDocs = [];            // every result currently loaded (for the gallery lightbox)
+  var lbIndex = -1;            // index into allDocs of the artifact shown in the lightbox
+  var lbPending = null;        // index to jump to once a lazy "load more" (triggered from the lightbox) appends
+  var initialGallery = null;   // ?gallery=<name> from the URL, opened once results load (shareable deep link)
+  var lastTotal = 0;
+  var collections = [];
 
-    fetch("/search-index.json")
-      .then((res) => {
-        if (!res.ok) throw new Error("search bundle request failed");
-        return res.json();
-      })
-      .then((docs) => {
-        const suggestionValues = new Set();
-        for (const doc of docs) {
-          if (doc.title) suggestionValues.add(doc.title);
-          if (doc.filename) suggestionValues.add(doc.filename);
-          if (Array.isArray(doc.tags)) {
-            for (const tag of doc.tags) suggestionValues.add(tag);
-          }
-        }
-        for (const value of Array.from(suggestionValues).sort((a, b) => a.localeCompare(b))) {
-          const option = document.createElement("option");
-          option.value = value;
-          suggestions.appendChild(option);
-        }
+  var el = function(id){ return document.getElementById(id); };
+  var esc = function(s){ var d=document.createElement("div"); d.textContent = s==null?"":s; return d.innerHTML; };
 
-        const applyFilter = () => {
-          const query = input.value.trim().toLowerCase();
-          let visible = 0;
-          for (const doc of docs) {
-            const item = itemMap.get(doc.name);
-            if (!item) continue;
-            const match = query === "" || (doc.search_text || "").includes(query);
-            item.classList.toggle("hidden", !match);
-            if (match) visible += 1;
-          }
-          noResults.classList.toggle("hidden", visible !== 0 || query === "");
-        };
+  function facetLabel(dim, val){ return val; }
+  var FACET_ORDER = [["type","Type"],["project","Project"],["model","Model"],["tag","Tag"],["library","Library"]];
 
-        input.addEventListener("input", applyFilter);
-        applyFilter();
-      })
-      .catch(() => {
-        // Keep the page functional even if the search bundle fails.
+  function render(data){
+    lastTotal = data.total;
+    el("count").textContent = data.total + (data.total===1?" result":" results");
+    // facets
+    var fx = el("facets"); fx.innerHTML = "";
+    FACET_ORDER.forEach(function(pair){
+      var dim = pair[0], label = pair[1];
+      var counts = data.facets[dim] || {};
+      var keys = Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a] || a.localeCompare(b); });
+      if (keys.length === 0) return;
+      var g = document.createElement("div"); g.className = "facet-group";
+      g.innerHTML = "<h3>"+esc(label)+"</h3>";
+      keys.slice(0, 12).forEach(function(v){
+        var active = (dim==="tag") ? state.tags.indexOf(v)>=0 : state[dim]===v;
+        var row = document.createElement("div");
+        row.className = "facet-val" + (active?" active":"");
+        row.innerHTML = "<span>"+esc(facetLabel(dim,v))+"</span><span class='fcount'>"+counts[v]+"</span>";
+        row.onclick = function(){ toggleFacet(dim, v); };
+        g.appendChild(row);
       });
-  })();
-  </script>
-  {{if .Watch}}<script>
+      fx.appendChild(g);
+    });
+    el("clear").style.display = anyFilter() ? "inline-block" : "none";
+    // flags group: favorites + warnings toggles
+    var wg = document.createElement("div"); wg.className = "facet-group";
+    wg.innerHTML = "<h3>Flags</h3>";
+    var favCount = (data.facets.favorite && data.facets.favorite["true"]) || 0;
+    var frow = document.createElement("div");
+    frow.className = "facet-val" + (state.favorite?" active":"");
+    frow.innerHTML = "<span>★ favorites</span><span class='fcount'>"+favCount+"</span>";
+    frow.onclick = function(){ state.favorite = !state.favorite; reload(); };
+    wg.appendChild(frow);
+    var wrow = document.createElement("div");
+    wrow.className = "facet-val" + (state.warnings?" active":"");
+    wrow.innerHTML = "<span>has warnings</span>";
+    wrow.onclick = function(){ state.warnings = !state.warnings; reload(); };
+    wg.appendChild(wrow); fx.appendChild(wg);
+  }
+
+  function toggleFavorite(key, cardEl){
+    var body = new URLSearchParams(); body.set("key", key);
+    fetch("/api/favorite", { method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:body })
+      .then(function(r){ return r.json(); })
+      .then(function(res){
+        var star = cardEl.querySelector(".star");
+        if (star){ star.classList.toggle("on", res.favorite); star.textContent = res.favorite ? "★" : "☆"; }
+        if (state.favorite) reload(); // if filtering favorites, drop/keep accordingly
+      });
+  }
+
+  function tagOp(op, key, tag){
+    var body = new URLSearchParams(); body.set("key", key); body.set("tag", tag);
+    fetch("/api/tags/"+op, { method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:body })
+      .then(function(r){ return r.json(); })
+      .then(function(){ reload(); });
+  }
+
+  function loadCollections(){
+    return fetch("/api/collections").then(function(r){ return r.json(); }).then(function(cols){
+      collections = cols || [];
+      renderCollectionsSidebar();
+    });
+  }
+
+  function renderCollectionsSidebar(){
+    var box = el("collections"); box.innerHTML = "";
+    var g = document.createElement("div"); g.className = "facet-group";
+    g.innerHTML = "<h3>Collections</h3>";
+    if (state.collection){
+      var allRow = document.createElement("div"); allRow.className = "facet-val";
+      allRow.innerHTML = "<span>✕ show all</span>";
+      allRow.onclick = function(){ setCollection(0); };
+      g.appendChild(allRow);
+    }
+    collections.forEach(function(c){
+      var row = document.createElement("div");
+      row.className = "facet-val" + (state.collection===c.id?" active":"");
+      row.innerHTML = "<span>"+esc(c.name)+"</span><span class='fcount'>"+c.count+"</span>";
+      row.onclick = function(){ setCollection(state.collection===c.id?0:c.id); };
+      g.appendChild(row);
+    });
+    var mk = document.createElement("input");
+    mk.className = "addtag"; mk.type = "text"; mk.placeholder = "＋ new collection"; mk.style.width = "100%"; mk.style.marginTop = "4px";
+    mk.addEventListener("keydown", function(e){ if(e.key==="Enter" && mk.value.trim()){
+      var body = new URLSearchParams(); body.set("name", mk.value.trim());
+      fetch("/api/collections", { method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:body })
+        // Re-render the cards too, so their "＋ collection…" dropdowns include the new one.
+        .then(function(){ mk.value=""; loadCollections().then(reload); });
+    }});
+    g.appendChild(mk);
+    box.appendChild(g);
+  }
+
+  // setCollection changes the active collection filter and refreshes BOTH the
+  // sidebar (active state + "show all") and the results.
+  function setCollection(id){ state.collection = id; renderCollectionsSidebar(); reload(); }
+
+  function addToCollection(colId, key){
+    fetch("/api/collections/"+colId+"/items", { method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:new URLSearchParams({key:key}) })
+      .then(function(){ loadCollections(); });
+  }
+  function removeFromCollection(colId, key){
+    fetch("/api/collections/"+colId+"/items?key="+encodeURIComponent(key), { method:"DELETE" })
+      .then(function(){ loadCollections(); reload(); });
+  }
+
+  function detailURLFor(name){ return "/artifact/" + name.split("/").map(encodeURIComponent).join("/"); }
+  function thumbURLFor(name){ return "/thumb/" + name.split("/").map(encodeURIComponent).join("/"); }
+  function wireThumb(node){
+    var timg = node.querySelector(".thumb, .rthumb img");
+    var twrap = node.querySelector(".thumb-wrap, .rthumb");
+    if (!timg || !twrap) return;
+    var done = function(){ twrap.classList.remove("skeleton"); };
+    timg.addEventListener("load", done); timg.addEventListener("error", done);
+  }
+
+  function renderCards(results, append){
+    var grid = el("grid");
+    grid.classList.toggle("list", state.view==="list");
+    if (!append) { grid.innerHTML = ""; selIdx = -1; allDocs = results.slice(); }
+    else { allDocs = allDocs.concat(results); }
+    el("empty").style.display = (results.length===0 && !append && lastTotal===0) ? "block" : "none";
+    results.forEach(function(d){
+      grid.appendChild(state.view==="list" ? buildRow(d) : buildCard(d));
+    });
+    el("more").style.display = (state.offset + PAGE < lastTotal) ? "block" : "none";
+    // If the lightbox asked to advance past the loaded set, a "load more" was
+    // triggered; now that results appended, jump to the pending artifact.
+    if (lbPending != null && lbPending < allDocs.length){ lbIndex = lbPending; lbPending = null; showLightbox(); try { history.replaceState(null, "", galleryURL(allDocs[lbIndex].name)); } catch(e) {} }
+    // Open a shareable ?gallery=<name> deep link once its artifact is loaded.
+    if (initialGallery && !append){
+      var gd = allDocs.filter(function(x){ return x.name === initialGallery; })[0];
+      initialGallery = null;
+      if (gd){ lbIndex = allDocs.indexOf(gd); el("lightbox").style.display = "flex"; showLightbox(); }
+    }
+  }
+
+  function humanSize(n){ return n>=1048576 ? (n/1048576).toFixed(1)+" MB" : n>=1024 ? (n/1024).toFixed(1)+" KB" : n+" B"; }
+
+  function buildRow(d){
+    var r = document.createElement("div"); r.className = "row";
+    var detailURL = detailURLFor(d.name);
+    var tags = (d.tags||[]).map(function(t){ return "<span class='tag' data-tag='"+esc(t)+"'>"+esc(t)+"</span>"; }).join("");
+    r.innerHTML =
+      "<a class='rthumb skeleton' href='"+esc(detailURL)+"'><img loading='lazy' alt='' src='"+thumbURLFor(d.name)+"'></a>" +
+      "<div class='rmain'>" +
+        "<a class='rtitle' href='"+esc(detailURL)+"'>"+esc(d.title||d.name)+"</a>" +
+        (tags?" <span class='tags'>"+tags+"</span>":"") +
+      "</div>" +
+      "<span class='badge "+esc(d.type)+"'>"+esc(d.type)+"</span>" +
+      "<span class='rmeta'>"+esc(d.model||"")+"</span>" +
+      "<span class='rmeta'>"+(d.updated_at?esc(d.updated_at.slice(0,10)):"")+"</span>" +
+      "<span class='rmeta'>"+humanSize(d.size||0)+"</span>" +
+      "<span class='star"+(d.favorite?" on":"")+"' title='favorite'>"+(d.favorite?"★":"☆")+"</span>";
+    wireThumb(r);
+    r.querySelectorAll(".tag").forEach(function(tn){ tn.onclick = function(e){ e.preventDefault(); toggleFacet("tag", tn.getAttribute("data-tag")); }; });
+    r.querySelector(".star").onclick = function(){ toggleFavorite(d.name, r); };
+    return r;
+  }
+
+  function buildCard(d){
+      var c = document.createElement("div"); c.className = "card";
+      var star = "<span class='star"+(d.favorite?" on":"")+"' title='favorite'>"+(d.favorite?"★":"☆")+"</span>";
+      var badges = "<span class='badge "+esc(d.type)+"'>"+esc(d.type)+"</span>";
+      if (d.warnings_count>0) badges += "<span class='badge warn' title='reconstruction warnings'>⚠ "+d.warnings_count+"</span>";
+      if (d.model) badges += "<span class='meta'>"+esc(d.model)+"</span>";
+      // d.tags is manifest ∪ user tags; user tags render below as removable
+      // chips, so the gray (filterable) row shows manifest-only tags to avoid
+      // showing the same tag twice.
+      var userSet = {}; (d.user_tags||[]).forEach(function(t){ userSet[t.toLowerCase()] = true; });
+      var manifestTags = (d.tags||[]).filter(function(t){ return !userSet[t.toLowerCase()]; });
+      var tags = manifestTags.map(function(t){ return "<span class='tag' data-tag='"+esc(t)+"'>"+esc(t)+"</span>"; }).join("");
+      var leftLinks = "<a href='"+esc(d.view_url)+"'>view</a>";
+      if (d.source_uuid) leftLinks += "<a href='https://claude.ai/chat/"+esc(d.source_uuid)+"' target='_blank'>claude.ai</a>";
+      var rmLink = state.collection ? "<a href='javascript:void(0)' class='rmcol' title='Remove from this collection'>✕</a>" : "";
+      var opts = "<option value=''>＋ collection</option>" + collections.map(function(c2){ return "<option value='"+c2.id+"'>"+esc(c2.name)+"</option>"; }).join("");
+      var userTags = (d.user_tags||[]).map(function(t){ return "<span class='utag' data-tag='"+esc(t)+"'>"+esc(t)+"<b class='x' title='remove'>×</b></span>"; }).join("");
+      var detailURL = detailURLFor(d.name);
+      var thumb = "<a class='thumb-wrap skeleton' href='"+esc(detailURL)+"' title='"+esc(d.title||d.name)+"'>" +
+        "<img class='thumb' loading='lazy' alt='' src='"+thumbURLFor(d.name)+"'>" +
+        "<span class='zoom' title='View large (gallery)'>🔍</span></a>";
+      c.innerHTML =
+        thumb +
+        "<div class='badges'>"+star+badges+"</div>" +
+        "<a class='card-title' href='"+esc(detailURL)+"'>"+esc(d.title||d.name)+"</a>" +
+        (d.description?"<div class='meta'>"+esc(d.description)+"</div>":"") +
+        (d.updated_at?"<div class='meta'>"+esc(d.updated_at.slice(0,10))+"</div>":"") +
+        (tags?"<div class='tags'>"+tags+"</div>":"") +
+        "<div class='tag-editor'>"+userTags+"<input class='addtag' type='text' placeholder='+tag' />" +
+        "</div>" +
+        "<div class='links'><span class='lg'>"+leftLinks+"</span><span class='rg'>"+rmLink+"<select class='addcol'>"+opts+"</select></span></div>";
+      wireThumb(c);
+      var zoom = c.querySelector(".zoom");
+      if (zoom) zoom.onclick = function(e){ e.preventDefault(); e.stopPropagation(); openLightbox(d); };
+      c.querySelectorAll(".tag").forEach(function(tn){ tn.onclick = function(e){ e.preventDefault(); toggleFacet("tag", tn.getAttribute("data-tag")); }; });
+      c.querySelector(".star").onclick = function(){ toggleFavorite(d.name, c); };
+      c.querySelectorAll(".utag .x").forEach(function(xb){ xb.onclick = function(){ tagOp("remove", d.name, xb.parentNode.getAttribute("data-tag")); }; });
+      var addInput = c.querySelector(".addtag");
+      addInput.addEventListener("keydown", function(e){ if(e.key==="Enter" && addInput.value.trim()){ tagOp("add", d.name, addInput.value.trim()); } });
+      var addSel = c.querySelector(".addcol");
+      addSel.addEventListener("change", function(){ if(addSel.value){ addToCollection(addSel.value, d.name); addSel.value=""; } });
+      var rm = c.querySelector(".rmcol");
+      if (rm) rm.onclick = function(){ removeFromCollection(state.collection, d.name); };
+      return c;
+  }
+
+  function anyFilter(){ return state.type||state.project||state.model||state.library||state.warnings||state.favorite||state.collection||state.after||state.before||state.tags.length>0; }
+
+  function toggleFacet(dim, val){
+    if (dim === "tag"){ var i = state.tags.indexOf(val); if (i>=0) state.tags.splice(i,1); else state.tags.push(val); }
+    else { state[dim] = (state[dim]===val) ? "" : val; }
+    reload();
+  }
+
+  function qs(limit, offset){
+    var p = new URLSearchParams();
+    if (state.q) p.set("q", state.q);
+    if (state.sort) p.set("sort", state.sort);
+    ["type","project","model","library"].forEach(function(k){ if(state[k]) p.set(k, state[k]); });
+    if (state.warnings) p.set("warnings","true");
+    if (state.favorite) p.set("favorite","true");
+    if (state.collection) p.set("collection", state.collection);
+    if (state.after) p.set("after", state.after);
+    if (state.before) p.set("before", state.before);
+    state.tags.forEach(function(t){ p.append("tag", t); });
+    p.set("limit", limit || PAGE); p.set("offset", offset != null ? offset : state.offset);
+    return p.toString();
+  }
+
+  // ---- URL <-> state: keep filters, loaded count, and scroll position in the URL
+  // so browser Back restores exactly where you were.
+  function loadedCount(){ return el("grid").children.length; }
+  function writeURL(){
+    var p = new URLSearchParams();
+    if (state.q) p.set("q", state.q);
+    if (state.sort && state.sort !== "recent") p.set("sort", state.sort);
+    ["type","project","model","library","after","before"].forEach(function(k){ if(state[k]) p.set(k, state[k]); });
+    if (state.warnings) p.set("warnings","1");
+    if (state.favorite) p.set("favorite","1");
+    if (state.collection) p.set("collection", state.collection);
+    state.tags.forEach(function(t){ p.append("tag", t); });
+    if (state.view !== "grid") p.set("view", state.view);
+    var n = loadedCount(); if (n > PAGE) p.set("n", n);        // how many are loaded
+    var y = Math.round(el("results").scrollTop); if (y > 0) p.set("y", y); // scroll within the results pane
+    if (lbOpen() && allDocs[lbIndex]) p.set("gallery", allDocs[lbIndex].name); // keep a shareable lightbox deep link
+    var s = p.toString();
+    try { history.replaceState(null, "", s ? ("?" + s) : location.pathname); } catch(e) {}
+  }
+  function hydrateFromURL(){
+    var p = new URLSearchParams(location.search);
+    if (p.has("q")) state.q = p.get("q");
+    if (p.has("sort")) state.sort = p.get("sort");
+    ["type","project","model","library","after","before"].forEach(function(k){ if(p.has(k)) state[k] = p.get(k); });
+    state.warnings = p.get("warnings") === "1";
+    state.favorite = p.get("favorite") === "1";
+    state.collection = parseInt(p.get("collection")||"0", 10) || 0;
+    if (p.getAll("tag").length) state.tags = p.getAll("tag");
+    var v = p.get("view"); if (v === "grid" || v === "list") state.view = v;
+    initialGallery = p.get("gallery") || null;
+    return { n: parseInt(p.get("n")||"0", 10) || 0, y: parseInt(p.get("y")||"0", 10) || 0 };
+  }
+  function reflectControls(){
+    el("q").value = state.q || "";
+    el("sort").value = state.sort || "recent";
+    el("after").value = state.after || "";
+    el("before").value = state.before || "";
+    if (state.after || state.before){ el("advanced").style.display = "flex"; el("adv-btn").classList.add("active"); }
+    el("view-grid").classList.toggle("active", state.view === "grid");
+    el("view-list").classList.toggle("active", state.view === "list");
+  }
+  // Restore a saved view: fetch the previously-loaded count in one request, then
+  // scroll to the saved position. Otherwise do a normal first page.
+  function initialLoad(restore){
+    if (restore.n > PAGE){
+      var n = Math.min(restore.n, 600);
+      fetch("/search?" + qs(n, 0)).then(function(r){ return r.json(); }).then(function(data){
+        render(data);
+        state.offset = Math.max(0, data.results.length - PAGE);
+        renderCards(data.results, false);
+        if (restore.y > 0) requestAnimationFrame(function(){ el("results").scrollTop = restore.y; });
+      });
+    } else {
+      reload();
+    }
+  }
+
+  function fetchPage(append){
+    fetch("/search?"+qs()).then(function(r){ return r.json(); }).then(function(data){
+      render(data);
+      renderCards(data.results, append);
+      writeURL();
+    });
+  }
+
+  function reload(){ state.offset = 0; fetchPage(false); }
+
+  el("q").addEventListener("input", debounce(function(){ state.q = el("q").value.trim(); reload(); }, 180));
+  el("sort").addEventListener("change", function(){ state.sort = el("sort").value; reload(); });
+  el("more").addEventListener("click", function(){ state.offset += PAGE; fetchPage(true); });
+  el("clear").addEventListener("click", function(){ state.type=state.project=state.model=state.library=""; state.tags=[]; state.warnings=false; state.favorite=false; state.collection=0; state.after=state.before=""; el("after").value=""; el("before").value=""; reload(); });
+
+  // advanced search: toggle the date/syntax panel; date inputs feed the query.
+  el("adv-btn").addEventListener("click", function(){
+    var a = el("advanced");
+    var show = a.style.display === "none";
+    a.style.display = show ? "flex" : "none";
+    el("adv-btn").classList.toggle("active", show);
+  });
+  el("after").addEventListener("change", function(){ state.after = el("after").value; reload(); });
+  el("before").addEventListener("change", function(){ state.before = el("before").value; reload(); });
+
+  function setView(v){
+    state.view = v;
+    try { localStorage.setItem("view", v); } catch(e) {}
+    el("view-grid").classList.toggle("active", v==="grid");
+    el("view-list").classList.toggle("active", v==="list");
+    reload();
+  }
+  el("view-grid").addEventListener("click", function(){ setView("grid"); });
+  el("view-list").addEventListener("click", function(){ setView("list"); });
+  el("view-grid").classList.toggle("active", state.view==="grid");
+  el("view-list").classList.toggle("active", state.view==="list");
+
+  function debounce(fn, ms){ var t; return function(){ clearTimeout(t); t=setTimeout(fn, ms); }; }
+
+  // ---- dark mode --------------------------------------------------------
+  try { state.dark = (localStorage.getItem("theme")==="dark"); } catch(e) {}
+  function applyTheme(){ document.body.classList.toggle("dark", !!state.dark); }
+  function toggleTheme(){ state.dark = !state.dark; try { localStorage.setItem("theme", state.dark?"dark":"light"); } catch(e) {} applyTheme(); }
+  el("theme").addEventListener("click", toggleTheme);
+  applyTheme();
+
+  // ---- command palette (⌘K) ---------------------------------------------
+  var palResults = [], palSel = 0;
+  function openPalette(){ el("palette").style.display="flex"; var i=el("palette-input"); i.value=""; el("palette-results").innerHTML=""; palResults=[]; palSel=0; i.focus(); }
+  function closePalette(){ el("palette").style.display="none"; }
+  function isPaletteOpen(){ return el("palette").style.display!=="none"; }
+  function renderPalette(){
+    var box = el("palette-results");
+    box.innerHTML = palResults.map(function(d,i){
+      return "<div class='pr"+(i===palSel?" sel":"")+"' data-i='"+i+"'><span class='pr-title'>"+esc(d.title||d.name)+"</span><span class='pr-meta'>"+esc(d.type)+(d.model?" · "+esc(d.model):"")+"</span></div>";
+    }).join("");
+    box.querySelectorAll(".pr").forEach(function(row){ row.onclick = function(){ gotoResult(parseInt(row.getAttribute("data-i"),10)); }; });
+  }
+  function palQuery(q){
+    fetch("/search?limit=8&q="+encodeURIComponent(q)).then(function(r){ return r.json(); }).then(function(data){
+      palResults = data.results || []; palSel = 0; renderPalette();
+    });
+  }
+  function gotoResult(i){ var d=palResults[i]; if(d) location.href = detailURLFor(d.name); }
+  el("palette-btn").addEventListener("click", openPalette);
+  el("palette").addEventListener("click", function(e){ if(e.target===el("palette")) closePalette(); });
+  el("palette-input").addEventListener("input", debounce(function(){ palQuery(el("palette-input").value.trim()); }, 150));
+  el("palette-input").addEventListener("keydown", function(e){
+    if(e.key==="ArrowDown"){ e.preventDefault(); palSel=Math.min(palSel+1, palResults.length-1); renderPalette(); }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); palSel=Math.max(palSel-1, 0); renderPalette(); }
+    else if(e.key==="Enter"){ e.preventDefault(); gotoResult(palSel); }
+    else if(e.key==="Escape"){ closePalette(); }
+  });
+
+  // ---- gallery lightbox --------------------------------------------------
+  // Opened by the 🔍 on a thumbnail; shows the artifact's screenshot large and
+  // steps through the loaded results with ←/→ (auto-loading more at the end).
+  function lbOpen(){ return el("lightbox").style.display !== "none"; }
+  // galleryURL returns the current URL with the gallery=<name> param set/removed,
+  // so a lightbox view is a shareable deep link and Back/Forward step through it.
+  function galleryURL(name){
+    var p = new URLSearchParams(location.search);
+    if (name) p.set("gallery", name); else p.delete("gallery");
+    var s = p.toString();
+    return s ? ("?" + s) : location.pathname;
+  }
+  function openLightbox(d){
+    lbIndex = allDocs.findIndex(function(x){ return x.name === d.name; });
+    if (lbIndex < 0){ allDocs = [d]; lbIndex = 0; }
+    el("lightbox").style.display = "flex";
+    showLightbox();
+    try { history.pushState(null, "", galleryURL(d.name)); } catch(e) {} // Back closes the lightbox
+  }
+  function showLightbox(){
+    var d = allDocs[lbIndex]; if (!d) return;
+    var img = el("lb-img");
+    img.src = thumbURLFor(d.name);                       // instant low-res
+    var hi = new Image();                                // high-res (may lazily render server-side)
+    hi.onload = function(){ if (allDocs[lbIndex] && allDocs[lbIndex].name === d.name) img.src = hi.src; };
+    hi.src = thumbURLFor(d.name) + "?full=1";
+    el("lb-title").textContent = d.title || d.name;
+    el("lb-open").href = "/view/" + d.name.split("/").map(encodeURIComponent).join("/");
+    el("lb-detail").href = detailURLFor(d.name);
+    el("lb-count").textContent = (lbIndex + 1) + " / " + allDocs.length + (state.q||anyFilter() ? " (filtered)" : "");
+    el("lb-prev").style.visibility = lbIndex > 0 ? "visible" : "hidden";
+    el("lb-next").style.visibility = (lbIndex < allDocs.length - 1 || el("more").style.display !== "none") ? "visible" : "hidden";
+  }
+  function lbMove(delta){
+    var i = lbIndex + delta;
+    if (i < 0) return;
+    if (i >= allDocs.length){
+      if (el("more").style.display !== "none"){ lbPending = i; state.offset += PAGE; fetchPage(true); } // load more, then advance
+      return;
+    }
+    lbIndex = i; showLightbox();
+    try { history.replaceState(null, "", galleryURL(allDocs[lbIndex].name)); } catch(e) {}
+  }
+  function closeLightbox(){ el("lightbox").style.display = "none"; try { history.replaceState(null, "", galleryURL(null)); } catch(e) {} }
+  el("lb-prev").onclick = function(){ lbMove(-1); };
+  el("lb-next").onclick = function(){ lbMove(1); };
+  el("lb-close").onclick = closeLightbox;
+  el("lightbox").addEventListener("click", function(e){ if (e.target === el("lightbox")) closeLightbox(); });
+  document.addEventListener("keydown", function(e){
+    if (!lbOpen()) return;
+    if (e.key === "ArrowLeft"){ e.preventDefault(); lbMove(-1); }
+    else if (e.key === "ArrowRight"){ e.preventDefault(); lbMove(1); }
+    else if (e.key === "Escape"){ closeLightbox(); }
+  });
+  // Back/Forward drive the lightbox: gallery param present -> open at it, absent -> close.
+  window.addEventListener("popstate", function(){
+    var g = new URLSearchParams(location.search).get("gallery");
+    if (g){ var i = allDocs.findIndex(function(x){ return x.name === g; }); if (i >= 0){ lbIndex = i; el("lightbox").style.display = "flex"; showLightbox(); } }
+    else if (lbOpen()){ el("lightbox").style.display = "none"; }
+  });
+
+  // ---- keyboard navigation ----------------------------------------------
+  var selIdx = -1;
+  function gridItems(){ return Array.prototype.slice.call(el("grid").children); }
+  function setSel(i){
+    var it = gridItems(); if(!it.length) return;
+    if(selIdx>=0 && it[selIdx]) it[selIdx].classList.remove("selected");
+    selIdx = Math.max(0, Math.min(i, it.length-1));
+    it[selIdx].classList.add("selected");
+    it[selIdx].scrollIntoView({block:"nearest"});
+  }
+  document.addEventListener("keydown", function(e){
+    if(lbOpen()) return; // the lightbox has its own ←/→/Esc handler
+    if((e.key==="k"||e.key==="K") && (e.metaKey||e.ctrlKey)){ e.preventDefault(); openPalette(); return; }
+    var tag = (e.target.tagName||"").toLowerCase();
+    if(tag==="input"||tag==="select"||tag==="textarea"||isPaletteOpen()) return;
+    if(e.key==="/"){ e.preventDefault(); el("q").focus(); }
+    else if(e.key==="j"){ e.preventDefault(); setSel(selIdx+1); }
+    else if(e.key==="k"){ e.preventDefault(); setSel(selIdx<0?0:selIdx-1); }
+    else if(e.key==="d"){ toggleTheme(); }
+    else if(e.key==="o"||e.key==="Enter"){ var it=gridItems(); if(it[selIdx]){ var a=it[selIdx].querySelector("a"); if(a) location.href=a.href; } }
+    else if(e.key==="f"){ var it=gridItems(); if(it[selIdx]){ var s=it[selIdx].querySelector(".star"); if(s) s.click(); } }
+  });
+
+  // Keep the URL's scroll position current (throttled), and flush it right before
+  // a card navigation so Back returns to the exact spot.
+  var scrollTimer;
+  el("results").addEventListener("scroll", function(){ clearTimeout(scrollTimer); scrollTimer = setTimeout(writeURL, 150); }, { passive: true });
+  el("grid").addEventListener("click", function(){ writeURL(); }, true);
+
+  // ---- mobile drawer: fold search + filters + facets behind a hamburger ----
+  // On mobile the toolbar, advanced panel, and facet sidebar are moved into a
+  // fixed overlay drawer (and moved back on desktop), so filters are reachable
+  // from a sticky top bar while scrolled deep into the results.
+  var mqMobile = window.matchMedia("(max-width: 720px)");
+  function applyLayout(){
+    var content = document.querySelector(".content"), layout = document.querySelector(".layout"),
+        drawer = el("drawer"), toolbar = document.querySelector(".toolbar"), advanced = el("advanced"),
+        facets = document.querySelector(".facets"), main = el("results");
+    if (mqMobile.matches){
+      if (toolbar.parentNode !== drawer){ drawer.appendChild(toolbar); drawer.appendChild(advanced); drawer.appendChild(facets); }
+    } else if (facets.parentNode === drawer){
+      content.insertBefore(toolbar, layout); content.insertBefore(advanced, layout); layout.insertBefore(facets, main);
+      closeDrawer();
+    }
+  }
+  function drawerOpen(){ return el("drawer").classList.contains("open"); }
+  function positionDrawer(){ el("drawer").style.top = Math.round(document.querySelector(".topbar").getBoundingClientRect().bottom) + "px"; }
+  function openDrawer(){ positionDrawer(); el("drawer").classList.add("open"); el("hamburger").textContent = "✕ Close"; }
+  function closeDrawer(){ el("drawer").classList.remove("open"); el("hamburger").textContent = "☰ Filters"; }
+  function toggleDrawer(){ drawerOpen() ? closeDrawer() : openDrawer(); }
+  el("hamburger").addEventListener("click", toggleDrawer);
+  mqMobile.addEventListener("change", applyLayout);
+  window.addEventListener("resize", function(){ if (drawerOpen()) positionDrawer(); });
+  applyLayout();
+
+  loadCollections();
+  var restore = hydrateFromURL();
+  reflectControls();
+  initialLoad(restore);
+})();
+</script>
+{{if .Watch}}<script>
 (function(){var es=new EventSource("/events");es.onmessage=function(e){if(e.data==="reload")location.reload()};es.onerror=function(){setTimeout(function(){location.reload()},2000)};})();
-  </script>{{end}}
+</script>{{end}}
 </body>
 </html>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{.Title}} — Transcript</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Geneva','Helvetica Neue',Helvetica,sans-serif; font-size: 14px; line-height: 1.55; color: #1a1a1a; background: #fff; margin: 0; }
+  .bar { position: sticky; top: 0; background: #fff; border-bottom: 2px solid #000; padding: 8px 20px; display: flex; gap: 10px; align-items: baseline; z-index: 10; }
+  .bar a { font-size: 12px; text-decoration: none; border: 2px solid #000; box-shadow: 2px 2px 0 #000; padding: 3px 9px; background: #fff; color: #000; }
+  .bar a:hover { background: #000; color: #fff; }
+  .bar h1 { font-size: 15px; margin: 0; }
+  .doc { max-width: 780px; margin: 0 auto; padding: 24px 20px 80px; }
+  .doc h1 { font-size: 20px; margin: 0 0 4px; }
+  /* Each turn in the exported transcript is an h2 ("## Human" / "## Assistant"). */
+  .doc h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: #444;
+            border-top: 2px solid #000; margin: 28px 0 10px; padding-top: 8px; }
+  .doc h3 { font-size: 15px; margin: 20px 0 6px; }
+  .doc p { margin: 0 0 12px; }
+  .doc ul, .doc ol { margin: 0 0 12px 22px; }
+  .doc li { margin: 2px 0; }
+  .doc em { color: #555; }
+  .doc a { color: #2563eb; }
+  .doc blockquote { border-left: 3px solid #ccc; margin: 0 0 12px; padding: 2px 12px; color: #555; }
+  .doc code { font-family: 'SF Mono','Consolas',monospace; font-size: 12px; background: #f2f2f2; padding: 1px 4px; border-radius: 3px; }
+  .doc pre { background: #f7f7f7; border: 1px solid #ddd; border-radius: 4px; padding: 12px; overflow-x: auto; margin: 0 0 14px; }
+  .doc pre code { background: none; padding: 0; font-size: 12px; line-height: 1.45; }
+  .doc table { border-collapse: collapse; margin: 0 0 14px; font-size: 13px; }
+  .doc th, .doc td { border: 1px solid #bbb; padding: 4px 8px; text-align: left; }
+  .doc hr { border: none; border-top: 1px dashed #bbb; margin: 20px 0; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <a href="{{.DetailURL}}">&#x25C0; Artifact</a>
+    <a href="/">Index</a>
+    <a href="/session/{{.Enc}}" title="Download the whole conversation as a zip">session ⬇</a>
+    <h1>{{.Title}}</h1>
+  </div>
+  <div class="doc">{{.Body}}</div>
+</body>
+</html>
