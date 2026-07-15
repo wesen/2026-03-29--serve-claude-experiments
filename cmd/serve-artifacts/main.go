@@ -39,5 +39,11 @@ func main() {
 	cobra.CheckErr(err)
 	rootCmd.AddCommand(cobraListCmd)
 
+	// Register the artifact command group (list/get/source/set-meta/push) — Glazed
+	// verbs that talk to a running server's API.
+	artifactCmd, err := cmds.NewArtifactCobraCommand()
+	cobra.CheckErr(err)
+	rootCmd.AddCommand(artifactCmd)
+
 	_ = rootCmd.Execute()
 }
