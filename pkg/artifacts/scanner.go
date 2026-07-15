@@ -187,7 +187,7 @@ func enrichFromExportMeta(a *Artifact, meta *exportMeta, convDir string) {
 	a.SourceConversationUUID = meta.UUID
 	a.SourceConversationTitle = meta.Name
 	a.Project = meta.ProjectUUID
-	a.Model = meta.Model
+	a.Model = plausibleModel(meta.Model, meta.UpdatedAt)
 	a.ConversationCreatedAt = meta.CreatedAt
 	a.ConversationUpdatedAt = meta.UpdatedAt
 	a.Warnings = append([]string(nil), meta.Warnings...)
@@ -204,6 +204,25 @@ func enrichFromExportMeta(a *Artifact, meta *exportMeta, convDir string) {
 	if strings.TrimSpace(meta.Name) != "" {
 		a.Title = meta.Name
 	}
+}
+
+var modelDateSuffixRe = regexp.MustCompile(`-(\d{8})$`)
+
+// plausibleModel drops a model whose embedded release date (…-YYYYMMDD) is after
+// the conversation's last activity. claude.ai reports the account's *current*
+// default model for old conversations, not the one actually used, so such a
+// model is impossible and misleading (e.g. a 2024-12-07 conversation labeled
+// claude-sonnet-4-5-20250929). Models without a date suffix are left as-is.
+func plausibleModel(model, updatedAt string) string {
+	m := modelDateSuffixRe.FindStringSubmatch(model)
+	if m == nil || len(updatedAt) < 10 {
+		return model
+	}
+	conv := strings.ReplaceAll(updatedAt[:10], "-", "") // YYYYMMDD
+	if m[1] > conv {
+		return ""
+	}
+	return model
 }
 
 func fileExists(path string) bool {
