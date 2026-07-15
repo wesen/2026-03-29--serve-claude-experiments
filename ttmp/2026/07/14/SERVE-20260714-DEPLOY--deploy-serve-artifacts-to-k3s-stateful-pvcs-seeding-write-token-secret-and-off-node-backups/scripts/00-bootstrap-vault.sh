@@ -34,15 +34,21 @@ fi
 vault kv patch "${KV_MOUNT}/${OBJECT_STORAGE_PATH}" serve-artifacts-prefix="serve-artifacts/" \
   && echo "set serve-artifacts-prefix on ${KV_MOUNT}/${OBJECT_STORAGE_PATH}"
 
-# 3) kubernetes-auth role binding the app's ServiceAccount to the KV paths it reads.
+# 3) Runtime policy: read the two KV paths the app's VaultStaticSecrets sync.
+vault policy write serve-artifacts - <<EOF
+path "${KV_MOUNT}/data/${RUNTIME_PATH}" {
+  capabilities = ["read"]
+}
+path "${KV_MOUNT}/data/${OBJECT_STORAGE_PATH}" {
+  capabilities = ["read"]
+}
+EOF
+echo "wrote Vault policy 'serve-artifacts' (read runtime + object-storage)"
+
+# 4) kubernetes-auth role binding the app's ServiceAccount to that policy.
 vault write "auth/kubernetes/role/${ROLE}" \
   bound_service_account_names="${SA}" \
   bound_service_account_namespaces="${NAMESPACE}" \
   policies="serve-artifacts" \
   ttl="1h" \
   && echo "bound Vault role ${ROLE} -> sa ${NAMESPACE}/${SA}"
-
-echo
-echo "NOTE: ensure a Vault policy 'serve-artifacts' grants read on:"
-echo "  ${KV_MOUNT}/data/${RUNTIME_PATH}"
-echo "  ${KV_MOUNT}/data/${OBJECT_STORAGE_PATH}"
