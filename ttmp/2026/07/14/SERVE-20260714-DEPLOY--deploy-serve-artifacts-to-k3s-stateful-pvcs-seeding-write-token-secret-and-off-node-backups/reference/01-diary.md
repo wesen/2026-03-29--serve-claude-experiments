@@ -167,9 +167,44 @@ The user pointed out the gitops push-permission mechanism was updated. Checked `
 ### Code review instructions
 - Read `.github/workflows/publish-image.yaml`; compare against `publish-vault/.github/workflows/publish-image.yaml`. The provisioning checklist is in publish-vault's `docs/github-app-gitops-pr-automation-guide.md`.
 
+## Step 5: Provision the GitOps-PR GitHub App role (Terraform) + Vault KV bootstrap
+
+Provisioned the Vault side of the GitHub-App token flow as code. Found the source of truth: `terraform/vault/github-actions/envs/k3s/main.tf` defines a `gitops_pr_roles` map that generates one JWT auth role + policy per app. Notably, no App-based (`gitops-pr-app`) role exists in Terraform yet — every entry still points at the deprecated PAT path (`gitops-pr-token`). The abstraction is token-vs-app agnostic (the role binds to the repo's main pushes and grants read on one KV path), so the App flow just needs an entry whose `secret_path` is the app-credential path.
+
+### Prompt Context
+
+**User prompt (verbatim):** "provision the github app + vault role/kv"
+
+**Assistant interpretation:** Provision the Vault JWT role + policy + KV path (and document the GitHub App creation) for serve-artifacts' GitOps-PR token flow.
+
+**Inferred user intent:** Make CI able to open GitOps PRs via the new mechanism.
+
+**Commit (code):** terraform `247924f` on branch `feat/serve-artifacts-gitops-pr-role`; serve-artifacts ticket commit (this).
+
+### What I did
+- Added a `serve-artifacts-gitops-pr` entry to `gitops_pr_roles` (repo `wesen/2026-03-29--serve-claude-experiments`, `secret_path = kv/data/ci/github/serve-artifacts/gitops-pr-app`, policy `gha-serve-artifacts-gitops-pr`) — the first App-based entry. `terraform fmt` clean, `terraform validate` Success.
+- Added `scripts/03-bootstrap-gitops-pr-app.sh` — `vault kv put` of the App `app_id` + `private_key` to the KV path (reuse the shared bot App's creds), with a shape-verify and a pointer to `terraform apply`.
+
+### Why
+- Codifying the role/policy in Terraform (not a manual `vault write`) keeps the auth binding reviewable and reproducible, matching how every other app's gitops-pr role is defined.
+
+### What worked
+- The existing `gitops_pr_roles` module accepted the App path unchanged — the role type, bound claims (owner/repo/ref=main/event=push), and policy template are identical to the PAT entries; only the KV path differs.
+
+### What didn't work / needs the operator
+- **The GitHub App itself and the KV secret value need hands + creds.** I cannot create/install a GitHub App or write to Vault. The operator: (1) ensure the shared `gitops-pr-bot` App is installed on `wesen/2026-03-27--hetzner-k3s` (Contents RW, Pull requests RW); (2) run `03-bootstrap-gitops-pr-app.sh` with its `app_id`/`.pem`; (3) `terraform apply` in `terraform/vault/github-actions/envs/k3s`.
+- Did not run `terraform plan/apply` (needs Vault creds + live state; outward-facing).
+
+### What warrants a second pair of eyes
+- Whether a single shared bot App is the convention (one App, per-repo KV copies) vs one App per repo — I assumed shared. Confirm before writing the KV value.
+
+### Code review instructions
+- Read the `serve-artifacts-gitops-pr` block in `main.tf`; it must match the workflow's `vault_role` + `gitops_app_secret_path`. Validate with `terraform validate`.
+
 ## Related
 
 - `design/01-deploying-serve-artifacts-to-k3s-...md` — the spec these steps implement (Part II updated for the GitHub-App token flow).
+- terraform branch `feat/serve-artifacts-gitops-pr-role` (commit `247924f`) — the Vault JWT role + policy (not pushed; ready to PR + apply).
 - `~/code/wesen/go-go-golems/publish-vault/docs/github-app-gitops-pr-automation-guide.md` — the canonical provisioning guide for the token mechanism.
 - hetzner-k3s branch `feat/serve-artifacts-stateful-backup` (commit `39e5978`) — the manifests (not pushed; ready to PR).
 - `SERVE-20260714-ARTIFACTAPI` — the write API whose token this deployment now enforces.

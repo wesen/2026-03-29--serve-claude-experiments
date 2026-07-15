@@ -14,3 +14,12 @@ Design guide written + uploaded to reMarkable; GitOps manifests (2 PVCs, Recreat
 - /home/manuel/code/wesen/2026-03-27--hetzner-k3s/gitops/kustomize/artifacts/backup-cronjob.yaml — Off-node backup to object storage
 - /home/manuel/code/wesen/2026-03-27--hetzner-k3s/gitops/kustomize/artifacts/deployment.yaml — Stateful Deployment (PVCs, write-token, Chrome mem)
 
+
+## 2026-07-14
+
+Provisioned GitOps-PR GitHub App role as code: terraform serve-artifacts-gitops-pr JWT role+policy (247924f, branch feat/serve-artifacts-gitops-pr-role, terraform validate clean) reading kv/data/ci/github/serve-artifacts/gitops-pr-app; added scripts/03-bootstrap-gitops-pr-app.sh for the KV secret. GitHub App install + vault kv put + terraform apply remain for the operator.
+
+### Related Files
+
+- /home/manuel/code/wesen/terraform/vault/github-actions/envs/k3s/main.tf — serve-artifacts-gitops-pr Vault JWT role+policy
+
