@@ -23,3 +23,12 @@ Provisioned GitOps-PR GitHub App role as code: terraform serve-artifacts-gitops-
 
 - /home/manuel/code/wesen/terraform/vault/github-actions/envs/k3s/main.tf — serve-artifacts-gitops-pr Vault JWT role+policy
 
+
+## 2026-07-15
+
+Step 7: Reconciled the stale colleague handoff with the live recovered cluster and Obsidian project note; confirmed infrastructure/corpus seed are complete, no userdata.db snapshot exists, and application PR #1 is the next delivery step.
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/ttmp/2026/07/14/SERVE-20260714-DEPLOY--deploy-serve-artifacts-to-k3s-stateful-pvcs-seeding-write-token-secret-and-off-node-backups/reference/01-diary.md — Current-state reconciliation and next-step decision
+
