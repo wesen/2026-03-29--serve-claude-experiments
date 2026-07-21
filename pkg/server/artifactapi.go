@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -81,6 +82,15 @@ func writeError(w http.ResponseWriter, status int, err error) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 }
 
+// writeNotFoundJSON reports a missing artifact as the server's JSON error shape
+// ({"error":"artifact not found: <name>"}) rather than Go's default-mux
+// plaintext "404 page not found". Every /api handler must speak JSON, so a
+// client decoding the response gets a structured error instead of an opaque
+// text blob that looks indistinguishable from a routing miss.
+func writeNotFoundJSON(w http.ResponseWriter, name string) {
+	writeError(w, http.StatusNotFound, fmt.Errorf("artifact not found: %s", name))
+}
+
 // corpusStatus maps a corpus-write error to an HTTP status: a bad name or type is
 // a client error (400), a collision is 409, anything else is 500.
 func corpusStatus(err error) int {
@@ -100,7 +110,7 @@ func (s *Server) handleArtifactSource(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	art, err := s.scanner.FindByName(name)
 	if err != nil {
-		http.NotFound(w, r)
+		writeNotFoundJSON(w, name)
 		return
 	}
 	http.ServeFile(w, r, art.Path)
@@ -142,7 +152,7 @@ func (s *Server) handleManifestPatch(w http.ResponseWriter, r *http.Request) {
 
 	art, err := s.scanner.FindByName(name)
 	if err != nil {
-		http.NotFound(w, r)
+		writeNotFoundJSON(w, name)
 		return
 	}
 	// Start from the current manifest so unspecified fields are preserved.
@@ -178,7 +188,7 @@ func (s *Server) writeManifestAndRespond(w http.ResponseWriter, r *http.Request,
 
 	art, err := s.scanner.FindByName(name)
 	if err != nil {
-		http.NotFound(w, r)
+		writeNotFoundJSON(w, name)
 		return
 	}
 	if err := artifacts.WriteManifest(artifacts.ManifestPathFor(art), m); err != nil {
@@ -190,7 +200,11 @@ func (s *Server) writeManifestAndRespond(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if !s.writeArtifactView(w, r, name) {
-		http.NotFound(w, r)
+		// The manifest was written and the index rebuilt, but the artifact then
+		// vanished from a re-scan (a race with an external writer). Report the
+		// inconsistency as a JSON error rather than a plaintext 404 so a client
+		// can tell a real "not found" from this transient post-write miss apart.
+		writeNotFoundJSON(w, name)
 	}
 }
 
@@ -313,9 +327,17 @@ func (s *Server) handleArtifactPush(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	// Commit 201 before writeArtifactView writes the body. writeArtifactView calls
+	// writeJSON, which only writes headers if none have been committed yet, so the
+	// Created status is preserved and the body follows it.
 	w.WriteHeader(http.StatusCreated)
 	if !s.writeArtifactView(w, r, req.Name) {
-		http.NotFound(w, r)
+		// The write and rebuild succeeded but the artifact then vanished from a
+		// re-scan (a race with an external writer). Report the inconsistency as a
+		// structured JSON error rather than a plaintext 404 that would mask the
+		// fact that the write itself succeeded. The status is already 201, so
+		// writeError's WriteHeader is a no-op; the JSON body is what the client sees.
+		writeNotFoundJSON(w, req.Name)
 	}
 }
 

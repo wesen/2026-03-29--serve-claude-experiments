@@ -849,7 +849,7 @@ func (s *Server) backfillThumbnails(ctx context.Context) {
 func (s *Server) handleArtifactJSON(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if !s.writeArtifactView(w, r, name) {
-		http.NotFound(w, r)
+		writeNotFoundJSON(w, name)
 	}
 }
 

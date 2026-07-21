@@ -327,7 +327,56 @@ func TestWriteTokenGate(t *testing.T) {
 
 func TestManifestOnMissingArtifactIs404(t *testing.T) {
 	_, ts := newTestServer(t)
-	if resp, _ := doReq(t, "PUT", ts.URL+"/api/manifest/ghost", "application/json", bytes.NewReader([]byte(`{"title":"x"}`))); resp.StatusCode != 404 {
+	resp, body := doReq(t, "PUT", ts.URL+"/api/manifest/ghost", "application/json", bytes.NewReader([]byte(`{"title":"x"}`)))
+	if resp.StatusCode != 404 {
 		t.Fatalf("manifest on missing artifact = %d, want 404", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Fatalf("missing-artifact 404 Content-Type = %q, want application/json (plaintext 404 is the bug)", ct)
+	}
+	var e struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &e); err != nil {
+		t.Fatalf("missing-artifact 404 body is not JSON: %v (body=%q)", err, body)
+	}
+	if !strings.Contains(e.Error, "ghost") {
+		t.Fatalf("missing-artifact 404 error = %q, want it to name the artifact", e.Error)
+	}
+}
+
+// TestAPINotFoundResponsesAreJSON asserts every /api handler that can 404 on a
+// missing artifact emits the JSON {"error":...} shape (Content-Type
+// application/json) instead of Go's default-mux plaintext "404 page not found".
+// The plaintext form made a normal "not found" indistinguishable from a routing
+// miss, which broke the CLI's error decoding and misled operators.
+func TestAPINotFoundResponsesAreJSON(t *testing.T) {
+	_, ts := newTestServer(t)
+
+	cases := []struct {
+		name, method, path string
+		body               string
+	}{
+		{"get artifact", "GET", "/api/artifact/ghost", ""},
+		{"get source", "GET", "/api/source/ghost", ""},
+		{"patch manifest", "PATCH", "/api/manifest/ghost", `{"tags":["x"]}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var bodyReader io.Reader
+			if c.body != "" {
+				bodyReader = strings.NewReader(c.body)
+			}
+			resp, body := doReq(t, c.method, ts.URL+c.path, "application/json", bodyReader)
+			if resp.StatusCode != 404 {
+				t.Fatalf("%s: status = %d, want 404", c.name, resp.StatusCode)
+			}
+			if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+				t.Fatalf("%s: Content-Type = %q, want application/json (body=%q)", c.name, ct, body)
+			}
+			if strings.Contains(string(body), "404 page not found") {
+				t.Fatalf("%s: got default-mux plaintext 404 (body=%q)", c.name, body)
+			}
+		})
 	}
 }
