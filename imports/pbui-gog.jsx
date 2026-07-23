@@ -637,7 +637,7 @@ const stepLabel = (s) => {
    a DOCUMENT (α, β, γ …) is a live chart: its own pipeline,
    encoding, geom, scale. doc-bound tiles are views onto one.
    ============================================================ */
-let seqc = 0, notec = 0, snapc = 0, docc = 0;
+let seqc = 0, notec = 0, snapc = 0, docc = 0, deckc = 0, slidec = 0;
 const GEOMS = ["point", "line", "bar", "area"];
 const SLOTS = ["x", "y", "color", "size", "facet"];
 const DOC_NAMES = ["α", "β", "γ", "δ", "ε", "ζ", "η", "θ", "ι", "κ", "λ", "μ"];
@@ -665,6 +665,9 @@ class World {
     this.snaps = [];
     this.pins = [null, null];
     this.watch = [{ id: ++notec, ptype: "dataset", value: "seabirds" }, { id: ++notec, ptype: "field", value: "mass_g" }];
+    this.decks = [];
+    this.activeDeckId = null;
+    this.presentingDeck = null;   /* deckId when in present mode, else null */
     /* seed two documents so the multi-chart story is visible on load */
     const a = this.newDoc("seabirds", true);
     const b = this.newDoc("climate", true);
@@ -674,6 +677,8 @@ class World {
     this.seedSnaps();
     this.trace = [];
     this.inspected = { title: "<dataset> seabirds", value: describeDataset("seabirds") };
+    /* seed one example deck so the deck app starts alive */
+    this.seedDeck();
   }
   bump() { this.notify && this.notify(); }
   log(type, data) { this.trace.push({ seq: ++seqc, type, data: data || {} }); this.bump(); }
@@ -765,6 +770,67 @@ class World {
   deleteSnap(id) { const s = this.snaps.find((x) => x.id === id); this.snaps = this.snaps.filter((x) => x.id !== id); this.pins = this.pins.map((p) => (p === id ? null : p)); this.log("snap_deleted", { chart: s ? s.name : id }); }
   pinSnap(slot, id) { this.pins[slot] = id; this.log("pinned", { slot: slot === 0 ? "A" : "B", chart: (this.snaps.find((s) => s.id === id) || {}).name }); }
 
+  /* ---- slide decks ---- */
+  activeDeck() { return this.decks.find((d) => d.id === this.activeDeckId) || this.decks[0]; }
+  deck(id) { return this.decks.find((d) => d.id === id) || this.activeDeck(); }
+  newDeck(name) {
+    const d = { id: "deck" + ++deckc, name: name || "deck-" + deckc, slides: [], activeSlideIdx: 0 };
+    this.decks.push(d); this.activeDeckId = d.id;
+    this.log("deck_added", { deck: d.name });
+    return d;
+  }
+  renameDeck(id, name) { const d = this.deck(id); if (d && name) { d.name = name; this.log("deck_renamed", { deck: name }); } }
+  deleteDeck(id) {
+    if (this.decks.length < 2) return;
+    const d = this.deck(id); if (!d) return;
+    this.decks = this.decks.filter((x) => x.id !== d.id);
+    if (this.activeDeckId === d.id) this.activeDeckId = this.decks[0].id;
+    if (this.presentingDeck === d.id) this.presentingDeck = null;
+    this.log("deck_removed", { deck: d.name });
+  }
+  addSlide(deckId, snapId) {
+    const d = this.deck(deckId); if (!d) return;
+    const s = { id: "slide" + ++slidec, snapId: snapId || null, markdown: "" };
+    d.slides.push(s); d.activeSlideIdx = d.slides.length - 1;
+    this.log("slide_added", { deck: d.name, snap: snapId ? (this.snaps.find((x) => x.id === snapId) || {}).name : "(text)" });
+    return s;
+  }
+  /* add the given snapshot as a NEW slide on the active deck (accept-flow target) */
+  addSnapToActiveDeck(snapId) {
+    if (!this.activeDeck()) this.newDeck();
+    return this.addSlide(this.activeDeckId, snapId);
+  }
+  removeSlide(deckId, slideId) {
+    const d = this.deck(deckId); if (!d) return;
+    const s = d.slides.find((x) => x.id === slideId);
+    d.slides = d.slides.filter((x) => x.id !== slideId);
+    d.activeSlideIdx = Math.max(0, Math.min(d.activeSlideIdx, d.slides.length - 1));
+    this.log("slide_removed", { deck: d.name, had_snap: s && s.snapId ? "yes" : "no" });
+  }
+  moveSlide(deckId, slideId, dir) {
+    const d = this.deck(deckId); if (!d) return;
+    const i = d.slides.findIndex((s) => s.id === slideId); const j = i + dir;
+    if (i < 0 || j < 0 || j >= d.slides.length) return;
+    const a = d.slides; [a[i], a[j]] = [a[j], a[i]];
+    d.activeSlideIdx = j;
+    this.log("slide_moved", { deck: d.name, dir: dir < 0 ? "up" : "down" });
+  }
+  setSlideSnap(deckId, slideId, snapId) {
+    const d = this.deck(deckId); if (!d) return;
+    const s = d.slides.find((x) => x.id === slideId); if (!s) return;
+    s.snapId = snapId;
+    this.log("slide_snap_set", { deck: d.name, snap: (this.snaps.find((x) => x.id === snapId) || {}).name });
+  }
+  setSlideMarkdown(deckId, slideId, md) {
+    const d = this.deck(deckId); const s = d && d.slides.find((x) => x.id === slideId);
+    if (s) { s.markdown = md; this.bump(); }   /* no trace log (too chatty); just re-render */
+  }
+  setActiveSlide(deckId, idx) {
+    const d = this.deck(deckId); if (d) { d.activeSlideIdx = Math.max(0, Math.min(idx, d.slides.length - 1)); this.bump(); }
+  }
+  startPresent(deckId) { this.presentingDeck = deckId; const d = this.deck(deckId); if (d) d.activeSlideIdx = Math.max(0, Math.min(d.activeSlideIdx, d.slides.length - 1)); this.log("present_started", { deck: (this.deck(deckId) || {}).name }); }
+  stopPresent() { if (this.presentingDeck) { this.log("present_stopped", { deck: (this.deck(this.presentingDeck) || {}).name }); this.presentingDeck = null; } }
+
   watchAdd(ptype, value) { this.watch.push({ id: ++notec, ptype, value }); this.log("watched", { ptype }); }
   watchRemove(id) { this.watch = this.watch.filter((n) => n.id !== id); this.log("watch_removed", { id }); }
 
@@ -796,6 +862,16 @@ class World {
     c2.mapping = { x: "origin", y: "mean_mpg", color: "origin", size: null, facet: null };
     c2.geom = "bar";
     this.snaps.push({ id: "snap" + ++snapc, name: "mpg-by-origin", chart: c2, at: "seed" });
+  }
+  seedDeck() {
+    /* one authored example deck with two seeded snapshots as slides */
+    const d = { id: "deck" + ++deckc, name: "intro", slides: [], activeSlideIdx: 0 };
+    const s0 = this.snaps[0], s1 = this.snaps[1];
+    d.slides.push({ id: "slide" + ++slidec, snapId: s0 ? s0.id : null, markdown: "# City temperatures\n\nSeasonal **temperature** by city over 24 months." });
+    d.slides.push({ id: "slide" + ++slidec, snapId: null, markdown: "## A text-only slide\n\nBullet points work:\n\n- first point\n- *italic* and `code`\n- third" });
+    d.slides.push({ id: "slide" + ++slidec, snapId: s1 ? s1.id : null, markdown: "# MPG by origin\n\nMean `mpg` grouped by origin, as a bar chart." });
+    this.decks.push(d);
+    this.activeDeckId = d.id;
   }
 }
 
@@ -1326,6 +1402,47 @@ function MiniPlot({ chart, W, H }) {
 }
 
 /* ============================================================
+   MARKDOWN — tiny inline renderer (headings, bold, italic, code, lists)
+   Zero-dependency, returns React nodes (no dangerouslySetInnerHTML).
+   Not a full CommonMark parser; documented subset for slide prose.
+   ============================================================ */
+function renderInline(text, key) {
+  /* split on **bold**, *italic*, `code` in one pass */
+  const parts = [];
+  let rest = text;
+  let i = 0;
+  const push = (node) => { parts.push(<span key={key + "-" + i++}>{node}</span>); };
+  while (rest.length) {
+    const m = rest.match(/^(.*?)(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)(.*)$/s);
+    if (!m) { push(rest); break; }
+    if (m[1]) push(m[1]);
+    if (m[3] != null) push(<b>{m[3]}</b>);
+    else if (m[4] != null) push(<i>{m[4]}</i>);
+    else if (m[5] != null) push(<code style={{ background: C.paneAlt, padding: "0 3px", border: "1px solid " + C.line, fontSize: "0.95em" }}>{m[5]}</code>);
+    rest = m[6] || "";
+  }
+  return parts;
+}
+function renderMarkdown(md, baseKey = "md") {
+  if (!md || !md.trim()) return <div style={{ color: C.faint, fontStyle: "italic" }}>(no text)</div>;
+  const blocks = md.split(/\n\n+/);
+  const out = [];
+  blocks.forEach((blk, bi) => {
+    const lines = blk.split(/\n/);
+    const k = baseKey + "-" + bi;
+    if (/^### /.test(blk)) out.push(<h4 key={k} style={{ margin: "4px 0 2px", fontSize: 13 }}>{renderInline(blk.replace(/^### /m, ""), k)}</h4>);
+    else if (/^## /.test(blk)) out.push(<h3 key={k} style={{ margin: "5px 0 3px", fontSize: 14 }}>{renderInline(blk.replace(/^## /m, ""), k)}</h3>);
+    else if (/^# /.test(blk)) out.push(<h2 key={k} style={{ margin: "6px 0 4px", fontSize: 16 }}>{renderInline(blk.replace(/^# /m, ""), k)}</h2>);
+    else if (lines.every((l) => /^[-*] /.test(l)))
+      out.push(<ul key={k} style={{ margin: "3px 0 3px 18px", padding: 0, listStyle: "disc" }}>{lines.map((l, li) => <li key={li} style={{ margin: "1px 0" }}>{renderInline(l.replace(/^[-*] /, ""), k + "-" + li)}</li>)}</ul>);
+    else if (lines.every((l) => /^\d+\. /.test(l)))
+      out.push(<ol key={k} style={{ margin: "3px 0 3px 18px", padding: 0, listStyle: "decimal" }}>{lines.map((l, li) => <li key={li} style={{ margin: "1px 0" }}>{renderInline(l.replace(/^\d+\. /, ""), k + "-" + li)}</li>)}</ol>);
+    else out.push(<p key={k} style={{ margin: "3px 0", lineHeight: 1.5 }}>{renderInline(blk, k)}</p>);
+  });
+  return out;
+}
+
+/* ============================================================
    APP · DATA BROWSER — datasets and their fields
    ============================================================ */
 /* Bundle a dataset (CSV + optional chart PNG + spec JSON) into a .zip. */
@@ -1798,6 +1915,7 @@ const EV_COLOR = {
   snapshotted: C.mint, restored: C.mint, snap_deleted: C.rose, pinned: C.lavender,
   watched: C.sage, watch_removed: C.rose, inspected: C.paneAlt, accepted: C.mustard,
   dataset_imported: C.mint, dataset_removed: C.rose,
+  deck_added: C.red, deck_removed: C.rose, deck_renamed: C.red, slide_added: C.mint, slide_removed: C.rose, slide_moved: C.lavender, slide_snap_set: C.blue, present_started: C.mustard, present_stopped: C.mustard,
   split_tile: C.lavender, close_tile: C.lavender, swap_tiles: C.lavender, move_split: C.lavender, app_changed: C.lavender,
   workspace_added: C.mint, workspace_removed: C.rose, workspace_renamed: C.mint, workspace_cloned: C.mint,
   doc_added: C.red, doc_removed: C.rose, doc_renamed: C.red, doc_activated: C.red, doc_duplicated: C.red,
