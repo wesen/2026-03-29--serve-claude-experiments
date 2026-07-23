@@ -397,6 +397,138 @@ async function loadPersistedDatasets() {
 }
 
 /* ============================================================
+   ZIP EXPORT — client-side ZIP writer (zero dependencies)
+   Produces a standard .zip using the native CompressionStream
+   ('deflate-raw') for text entries and STORE for already-compressed
+   payloads (PNG). No WASM, no npm packages, no import-map changes.
+   ZIP layout: [local header+data]…[central directory][EOCD].
+   ============================================================ */
+
+/* CRC32 (reflected polynomial 0xEDB88320), table precomputed once. */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+/* little-endian byte helpers for the ZIP record fields */
+const u16 = (v) => [v & 0xFF, (v >>> 8) & 0xFF];
+const u32 = (v) => [v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF];
+
+/* MS-DOS date/time for the central directory (fixed to a deterministic
+   value so output is stable; the EOCD/CD carry it but unzip ignores it). */
+const DOS_TIME = u16(0);          /* 00:00:00 */
+const DOS_DATE = u16(0x0021);     /* 1980-01-01 */
+
+const canDeflate = typeof CompressionStream !== "undefined";
+
+async function deflateRaw(bytes) {
+  const cs = new CompressionStream("deflate-raw");
+  const w = cs.writable.getWriter();
+  w.write(bytes); w.close();
+  const out = [];
+  const r = cs.readable.getReader();
+  for (;;) { const { done, value } = await r.read(); if (done) break; out.push(value); }
+  const len = out.reduce((a, b) => a + b.length, 0);
+  const res = new Uint8Array(len);
+  let p = 0;
+  for (const b of out) { res.set(b, p); p += b.length; }
+  return res;
+}
+
+class ZipWriter {
+  constructor() { this.entries = []; this.offset = 0; this.chunks = []; }
+  async add(name, data, { store = false } = {}) {
+    const bytes = typeof data === "string" ? new TextEncoder().encode(data)
+      : (data instanceof Uint8Array ? data : new Uint8Array(data));
+    const crc = crc32(bytes);
+    let payload, method;
+    if (store || !canDeflate) { payload = bytes; method = 0; }
+    else { payload = await deflateRaw(bytes); method = 8; }
+    const nameBytes = new TextEncoder().encode(name);
+    const local = [
+      ...u32(0x04034b50), ...u16(20), ...u16(0), ...u16(method),
+      ...DOS_TIME, ...DOS_DATE, ...u32(crc), ...u32(payload.length),
+      ...u32(bytes.length), ...u16(nameBytes.length), ...u16(0),
+    ];
+    this.chunks.push(new Uint8Array(local), nameBytes, payload);
+    this.entries.push({ name: nameBytes, crc, compSize: payload.length, uncompSize: bytes.length, method, offset: this.offset });
+    this.offset += local.length + nameBytes.length + payload.length;
+  }
+  async blob() {
+    const cd = [];
+    let cdSize = 0;
+    for (const e of this.entries) {
+      const rec = [
+        ...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0), ...u16(e.method),
+        ...DOS_TIME, ...DOS_DATE, ...u32(e.crc), ...u32(e.compSize), ...u32(e.uncompSize),
+        ...u16(e.name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0),
+        ...u32(e.offset),
+      ];
+      cd.push(new Uint8Array(rec), e.name);
+      cdSize += rec.length + e.name.length;
+    }
+    const cdOffset = this.offset;
+    const eocd = [
+      ...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(this.entries.length),
+      ...u16(this.entries.length), ...u32(cdSize), ...u32(cdOffset), ...u16(0),
+    ];
+    this.chunks.push(...cd, new Uint8Array(eocd));
+    return new Blob(this.chunks, { type: "application/zip" });
+  }
+}
+
+/* CSV serializer — RFC4180 quoting for fields containing , " \n */
+function csvField(v) {
+  const s = v == null ? "" : String(v);
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function datasetToCSV(ds) {
+  const head = ds.fields.map((f) => csvField(f.name)).join(",");
+  const rows = ds.rows.map((r) => ds.fields.map((f) => csvField(r[f.name])).join(","));
+  return [head, ...rows].join("\n") + "\n";
+}
+
+/* SVG → PNG: serialize, draw to a scaled canvas, return a PNG Blob. */
+async function svgToPngBlob(svgEl, scale = 2) {
+  const clone = svgEl.cloneNode(true);
+  const w = svgEl.viewBox.baseVal.width || svgEl.clientWidth || 560;
+  const h = svgEl.viewBox.baseVal.height || svgEl.clientHeight || 300;
+  clone.setAttribute("width", w);
+  clone.setAttribute("height", h);
+  if (!clone.getAttribute("xmlns")) clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  const xml = new XMLSerializer().serializeToString(clone);
+  const dataUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(xml);
+  const img = new Image();
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = dataUrl; });
+  const canvas = document.createElement("canvas");
+  canvas.width = w * scale; canvas.height = h * scale;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return new Promise((res) => canvas.toBlob(res, "image/png"));
+}
+
+/* Download trigger */
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ============================================================
    PIPELINE ENGINE — tidyverse verbs over plain row objects
    step kinds: filter · derive · summarize · sort · limit
    ============================================================ */
