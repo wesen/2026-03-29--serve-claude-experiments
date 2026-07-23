@@ -8,3 +8,7 @@
 - [x] Step 4: Write ZIP export implementation guide <!-- t:vh3m -->
 - [x] Step 5: Implement ZIP writer + SVG→PNG + CSV serializer <!-- t:fqtu -->
 - [x] Step 6: Wire bundle download UI and verify end-to-end <!-- t:s12n -->
+- [x] Step 7: Write slide deck builder design doc <!-- t:jbat -->
+- [ ] Step 8: Add Deck model + World methods + markdown renderer (Phase A) <!-- t:1kta -->
+- [ ] Step 9: Build DeckApp editor + workspace + chart menu verb (Phase B) <!-- t:mrsq -->
+- [ ] Step 10: Add present mode + deck ZIP export (Phase C) <!-- t:5qyj -->

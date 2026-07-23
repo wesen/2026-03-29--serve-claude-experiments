@@ -32,3 +32,12 @@ Step 6: wire bundle download UI (bundleDataset + ↓ bundle button, data-chart-d
 
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/imports/pbui-gog.jsx — bundleDataset, DataApp bundle button, PlotSVG data-chart-doc
 
+
+## 2026-07-23
+
+Step 7: write slide deck builder design doc (slides referencing snapshots, inline markdown renderer, present overlay, deck ZIP export)
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/ttmp/2026/07/23/SERVE-20260723-PBUI-GOG--pbui-grammar-of-graphics-csv-import-opfs-persistence-and-zip-export-bundles/design-doc/02-slide-deck-builder-design-and-implementation-guide.md — slide deck builder design
+
