@@ -10,13 +10,16 @@ Topics:
 DocType: design-doc
 Intent: long-term
 Owners: []
-RelatedFiles: []
+RelatedFiles:
+    - Path: repo://imports/pbui-gog.jsx
+      Note: ZIP writer + bundle UI implemented per this guide
 ExternalSources: []
-Summary: "Implementation guide for client-side ZIP export bundles (CSV + PNG) in the pbui-gog.jsx artifact, using native browser APIs with zero external dependencies."
-LastUpdated: "2026-07-23"
-WhatFor: "Designing and implementing the ZIP export feature end-to-end"
-WhenToUse: "When implementing or reviewing the ZIP bundle export in pbui-gog.jsx"
+Summary: Implementation guide for client-side ZIP export bundles (CSV + PNG) in the pbui-gog.jsx artifact, using native browser APIs with zero external dependencies.
+LastUpdated: 2026-07-23T16:45:00-04:00
+WhatFor: Designing and implementing the ZIP export feature end-to-end
+WhenToUse: When implementing or reviewing the ZIP bundle export in pbui-gog.jsx
 ---
+
 
 # ZIP export bundles: implementation guide
 

@@ -25,6 +25,20 @@ topics:
       description: GitOps/ArgoCD desired-state flow
     - slug: backup
       description: Backups, snapshots, disaster recovery
+    - slug: csv
+      description: 'topic: csv'
+    - slug: grammar-of-graphics
+      description: 'topic: grammar-of-graphics'
+    - slug: opfs
+      description: 'topic: opfs'
+    - slug: pbui
+      description: 'topic: pbui'
+    - slug: react
+      description: 'topic: react'
+    - slug: zip
+      description: 'topic: zip'
+    - slug: diary
+      description: 'topic: diary'
 docTypes:
     - slug: design-doc
       description: Structured rationale and architecture notes

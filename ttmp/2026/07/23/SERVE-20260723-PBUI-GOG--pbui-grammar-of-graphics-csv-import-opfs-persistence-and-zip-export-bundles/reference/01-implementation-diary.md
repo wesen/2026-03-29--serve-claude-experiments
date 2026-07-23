@@ -1,5 +1,5 @@
 ---
-Title: 'Implementation diary'
+Title: Implementation diary
 Ticket: SERVE-20260723-PBUI-GOG
 Status: active
 Topics:
@@ -8,13 +8,16 @@ Topics:
 DocType: reference
 Intent: long-term
 Owners: []
-RelatedFiles: []
+RelatedFiles:
+    - Path: repo://imports/pbui-gog.jsx
+      Note: the artifact implementing CSV import, OPFS persistence, and ZIP export (Steps 1-6)
 ExternalSources: []
-Summary: "Chronological implementation diary for pbui-gog.jsx: import, CSV upload, OPFS persistence, and ZIP export bundles."
-LastUpdated: "2026-07-23"
-WhatFor: "Recording the step-by-step implementation journey for the pbui-gog work"
-WhenToUse: "When resuming or reviewing pbui-gog work"
+Summary: 'Chronological implementation diary for pbui-gog.jsx: import, CSV upload, OPFS persistence, and ZIP export bundles.'
+LastUpdated: 2026-07-23T16:45:00-04:00
+WhatFor: Recording the step-by-step implementation journey for the pbui-gog work
+WhenToUse: When resuming or reviewing pbui-gog work
 ---
+
 
 # Diary
 
@@ -230,3 +233,122 @@ This step produced the design document for client-side ZIP export bundles before
 
 ### Technical details
 - ZIP record signatures: local `0x04034b50`, central dir `0x02014b50`, EOCD `0x06054b50`. All multi-byte fields little-endian. Method 0=STORE, 8=DEFLATE.
+
+---
+
+## Step 5: Implement ZIP writer + helpers (Phase A)
+
+This step built the zero-dependency client-side ZIP engine: a CRC32 implementation, a `ZipWriter` class that emits real local-file-header + central-directory + EOCD records using the native `CompressionStream('deflate-raw')` for deflate, plus the supporting serializers (`datasetToCSV`, `svgToPngBlob`, `downloadBlob`). No UI yet — the validation strategy was a console round-trip test confirmed by the system `unzip`.
+
+**Commit (code):** 61d2056 — "feat(pbui-gog): add zero-dep client-side ZIP writer + CSV/PNG helpers"
+
+### Prompt Context
+
+**User prompt (verbatim):** (same as Step 4 — "can we create like zip files in the browser itself? for example to download pngs + csv bundles? maybe with wasm?")
+
+**Assistant interpretation:** Implement the ZIP export engine per the Step 4 design doc, starting with the pure helpers (no UI), validated independently.
+
+**Inferred user intent:** Ship working client-side ZIP creation without external dependencies.
+
+### What I did
+- Inserted a `ZIP EXPORT` block between the OPFS layer and the pipeline engine (`imports/pbui-gog.jsx` after line 386):
+  - `CRC_TABLE` precomputed once (reflected poly `0xEDB88320`) + `crc32()`.
+  - `u16`/`u32` little-endian byte packers; `DOS_TIME`/`DOS_DATE` constants.
+  - `canDeflate = typeof CompressionStream !== "undefined"` capability flag.
+  - `deflateRaw(bytes)` — pipes a `Uint8Array` through `new CompressionStream("deflate-raw")`, concatenates the output chunks.
+  - `class ZipWriter` — `add(name, data, {store})` computes CRC + (deflate or store) payload + emits a local header; `blob()` emits the central directory + EOCD and returns a `Blob({type:"application/zip"})`.
+  - `csvField()` + `datasetToCSV(ds)` — RFC4180 quoting for `,` `"` `\n`.
+  - `svgToPngBlob(svgEl, scale=2)` — clone, set width/height/xmlns, serialize to data URL, `<img>` decode, draw to scaled canvas with white bg, `toBlob("image/png")`.
+  - `downloadBlob(blob, filename)` — `URL.createObjectURL` + `<a download>` click + revoke.
+- Validated with an inline console test that mirrors `ZipWriter` exactly: built a zip of `hello.txt` + `data/values.csv`, checked signatures (`localSig=504b0304`, `eocdSig=504b0506`), downloaded via `<a download>`, ran `unzip -l` / `unzip -t` / extract — all clean, contents matched.
+
+### Why
+- Pure-helpers-first lets the binary-format code (CRC, offsets, LE packing) be validated in isolation before UI entanglement, which is where ZIP bugs are expensive to debug.
+
+### What worked
+- `unzip -t` integrity test passed with zero errors on the first try; `CompressionStream('deflate-raw')` produced standard deflate that `unzip` inflated correctly. No WASM, no npm package, no import-map change.
+
+### What didn't work
+- First attempt to retrieve the test zip used `page.context()._impl._browser` which is undefined — switched to triggering the app's own `downloadBlob` flow via `<a download>`, which Playwright captured as a tracked download into `.playwright-mcp/`.
+
+### What I learned
+- `CompressionStream('deflate-raw')` is the exact deflate variant ZIP uses — so a native-stream-based zip is a real standard ZIP, not a toy. This was the linchpin fact that made the zero-dep approach viable and is confirmed by `unzip -t`.
+- ZIP local-header signature `0x04034b50`, central-dir `0x02014b50`, EOCD `0x06054b50`; all multi-byte fields little-endian. The `u16`/`u32` array-spread approach (`...u32(v)`) keeps the record code readable.
+
+### What was tricky to build
+- Offset bookkeeping in `ZipWriter`: each entry's `offset` must be recorded as the byte position of its *local header* (before adding the header's own bytes), and the central directory offset in the EOCD is the position after all local headers+data. An off-by-one there makes `unzip` report a bad offset; the `unzip -t` round-trip is the only reliable check.
+- `deflateRaw` is async (streams), so `add` is async and `blob()` must run after all adds resolve — the API forces `await zip.add(...)` ordering, which is fine but means `blob()` can't precompute the CD until adds finish.
+
+### What warrants a second pair of eyes
+- The CRC32 table init and `crc32` final XOR (`^ 0xFFFFFFFF`) — a sign error here passes for ASCII but fails for binary PNG bytes. The PNG round-trip in Step 6 exercises this.
+- `u32` truncation: values > 2^32 would silently wrap; not a risk here (max file sizes are KB/MB) but the helper doesn't assert.
+
+### What should be done in the future
+- Add a `STORE` fallback when `canDeflate` is false (already gated by the flag, but the UI should surface "uncompressed zip" if so). Low priority given universal evergreen support.
+- Consider streaming the zip to disk via OPFS for very large multi-dataset bundles (current design holds everything in memory as `Blob` chunks).
+
+### Code review instructions
+- `grep -n "class ZipWriter\|crc32\|deflateRaw\|datasetToCSV\|svgToPngBlob" imports/pbui-gog.jsx`
+- Console test: open the page, paste the inline `ZipWriter` test from this diary, download, `unzip -t`.
+
+### Technical details
+- ZIP method 0 = STORE (no compression), 8 = DEFLATE. Version-needed-to-extract = 20 (2.0). Flags = 0. DOS date fixed to 1980-01-01 for deterministic output.
+
+---
+
+## Step 6: Wire bundle download UI (Phase B)
+
+This step connected the Step 5 helpers to the UI: a `bundleDataset()` orchestrator and a "↓ bundle" button per dataset in `DataApp`. The subtlety discovered during testing was that `document.querySelector('svg[viewBox]')` grabbed the *first* SVG on the page, which on the explore workspace was the climate line chart, not the seabirds scatter being bundled — so the PNG didn't match the dataset. The fix tagged each `PlotSVG` with `data-chart-doc={docId}` so `bundleDataset` finds the SVG belonging to a chart document of the bundled dataset.
+
+**Commit (code):** 3df2f60 — "feat(pbui-gog): wire ZIP bundle download UI"
+
+### Prompt Context
+
+**User prompt (verbatim):** (continuation of the ZIP request — "implement it, committing at appropriate intervals, and keeping a diary")
+
+**Assistant interpretation:** Add the export button and orchestrator, validate the full bundle (CSV + specs JSON + PNG) end-to-end via Playwright + system unzip.
+
+**Inferred user intent:** A user-downloadable .zip containing the dataset CSV, its chart spec, and a rendered PNG of the chart.
+
+### What I did
+- Added `bundleDataset(world, datasetId)` before `DataApp`: builds a `ZipWriter`, adds `{id}.csv` (via `datasetToCSV`), adds `{id}-specs.json` (every chart document using that dataset: name/steps/mapping/geom/yScale), finds the chart SVG via `svg[data-chart-doc]` for a matching doc, rasterizes at 2× via `svgToPngBlob`, stores the PNG with `{store:true}` (already compressed), then `downloadBlob(zip.blob(), "{id}-bundle.zip")`.
+- Added `data-chart-doc={docId}` to the `PlotSVG` `<svg>` element.
+- Added a "↓ bundle" button to each dataset row in `DataApp` (blue, bordered), plus kept the delete `×` for uploaded datasets.
+- Verified end-to-end: switched to explore workspace, re-pointed the chart tile's DOC dropdown to "α · seabirds", confirmed `svg[data-chart-doc="d1"]` present, clicked "↓ bundle", Playwright captured `seabirds-bundle.zip`. `unzip -t` passed; contents: `seabirds.csv` (2611B, 90 quoted rows), `seabirds-specs.json` (chart α spec), `seabirds-chart.png` (928×600 RGBA, valid PNG). VLM confirmed it's a scatter plot (not a line chart) — the dataset-matching fix worked.
+
+### Why
+- `data-chart-doc` decouples the PNG capture from page layout: whichever chart tile currently renders the bundled dataset gets rasterized, rather than an arbitrary first SVG.
+
+### What worked
+- Full bundle: CSV + specs JSON + PNG in one valid zip, dataset-matched PNG, `unzip -t` clean.
+
+### What didn't work
+- First end-to-end attempt (before the `data-chart-doc` fix) captured the climate line chart in the PNG because the explore workspace's on-screen chart was climate (doc β). Diagnosed via VLM image analysis ("multi-series line chart" instead of scatter), fixed by tagging SVGs and matching by dataset.
+
+### What I learned
+- The legend in `PlotSVG` is an HTML `<div>` sibling to the `<svg>`, not inside it — so `svgToPngBlob` captures only the plot, not the legend. Acceptable for a snapshot; documented as a known limitation.
+- `svgToPngBlob` needs explicit `width`/`height` on the cloned SVG (from `viewBox.baseVal`) and an `xmlns` attribute, or the `<img>` fails to decode the data URL.
+
+### What was tricky to build
+- Selecting the *right* SVG: the page may render several charts across tiles/workspaces. The `data-chart-doc` attribute + matching against `world.docs.filter(datasetId)` is the robust solution; relying on DOM order is not.
+- PNG `STORE` vs `DEFLATE`: PNGs are already deflate-compressed internally, so re-deflating wastes CPU; `{store:true}` skips compression and sets method=0. Both paths validated (`unzip -t` OK).
+
+### What warrants a second pair of eyes
+- `bundleDataset` picks the *first* matching chart document's SVG if several charts use the same dataset — could surprise a user who expected a specific chart. Low risk (the specs.json lists all of them) but consider letting the user choose, or bundling all matching chart PNGs.
+- `svgToPngBlob` rasterizes whatever is currently rendered, including transient accept-mode outlines — fine for export but worth knowing.
+
+### What should be done in the future
+- Render the legend into the PNG: either move the legend inside the SVG, or composite the legend `<div>` via `html2canvas`-style capture. Out of scope for now.
+- Add an "export" button in `ChartApp` too (design doc Phase B option), so a chart can be bundled without the data browser open.
+- The PNG lacks axis titles; consider a `svgToPngBlob` variant that renders a title from the spec.
+
+### Code review instructions
+- `grep -n "bundleDataset\|data-chart-doc\|↓ bundle" imports/pbui-gog.jsx`
+- Reproduce: explore workspace → re-point chart tile to α (seabirds) → click "↓ bundle" on seabirds → `unzip -t <download>` and `file *-chart.png`.
+
+### Technical details
+- Bundle contents: `{id}.csv`, `{id}-specs.json`, `{id}-chart.png` (2× scale, RGBA, white bg). PNG stored method=0 (STORE); CSV/specs method=8 (DEFLATE).
+- `downloadBlob` revokes the object URL after 1s to avoid leaks.
+
+### What I'd do differently next time
+- Add the `data-chart-doc` tag in the same commit as the SVG helper, since PNG-matching is the obvious correctness risk — I caught it in testing, but it's the kind of invariant that belongs in the design from the start.
