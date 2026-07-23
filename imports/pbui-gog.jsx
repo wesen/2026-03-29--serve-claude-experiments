@@ -1445,6 +1445,9 @@ function renderMarkdown(md, baseKey = "md") {
 /* ============================================================
    APP · DATA BROWSER — datasets and their fields
    ============================================================ */
+/* Export a deck as a single .zip (deck.md + one PNG per chart slide).
+   Implemented in Phase C; stub here so DeckApp parses in Phase B. */
+async function exportDeck(world, deckId) { /* Phase C */ console.log("exportDeck stub", deckId); }
 /* Bundle a dataset (CSV + optional chart PNG + spec JSON) into a .zip. */
 async function bundleDataset(world, datasetId) {
   const ds = DATASETS[datasetId];
@@ -1876,6 +1879,82 @@ function CompareApp() {
 }
 
 /* ============================================================
+   APP · DECK — slide deck builder (snapshots + markdown)
+   ============================================================ */
+function DeckApp() {
+  const ui = useUI(); const w = ui.world;
+  const deck = w.activeDeck();
+  if (!deck) return <AppBody><div style={{ color: C.faint }}>No deck.</div></AppBody>;
+  const slide = deck.slides[deck.activeSlideIdx];
+  const snap = slide && slide.snapId ? w.snaps.find((x) => x.id === slide.snapId) : null;
+  return (
+    <>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "6px 8px 4px", flexShrink: 0, flexWrap: "wrap" }}>
+        {w.decks.map((d) => (
+          <P key={d.id} ptype="deck" value={d.id} onActivate={() => { w.activeDeckId = d.id; w.bump(); }} activateDoc="make this the active deck" doc={"deck " + d.name + " (" + d.slides.length + " slides)"}>
+            <span style={{ border: "1px solid " + C.ink, background: w.activeDeckId === d.id ? C.sel : C.paneAlt, fontWeight: 700, padding: "1px 8px", fontSize: 10.5, cursor: "pointer" }}>{d.name}</span>
+          </P>
+        ))}
+        <Btn tone={C.mint} onClick={() => w.newDeck()}>+ deck</Btn>
+        <span style={{ flex: 1 }} />
+        <Btn tone={C.mustard} onClick={() => deck.slides.length && w.startPresent(deck.id)} disabled={!deck.slides.length}>▶ present</Btn>
+        <Btn tone={C.paneAlt} onClick={() => exportDeck(w, deck.id)} disabled={!deck.slides.length}>↓ export zip</Btn>
+      </div>
+      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+        {/* slide list */}
+        <div style={{ width: 200, flexShrink: 0, overflow: "auto", borderRight: "2px solid " + C.ink, background: C.paneAlt, padding: "4px 6px" }}>
+          <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+            <Btn tone={C.blue} onClick={() => w.addSlide(deck.id)}>+ slide</Btn>
+            <Btn tone={C.blue} onClick={async () => { const r = await ui.accept("chart", "DECK — click a CHART snapshot to add as a new slide (Esc cancels)"); if (r) w.addSlide(deck.id, r.value); }}>+ chart slide…</Btn>
+          </div>
+          {deck.slides.map((s, i) => {
+            const sn = s.snapId ? w.snaps.find((x) => x.id === s.snapId) : null;
+            return (
+              <div key={s.id} onClick={() => w.setActiveSlide(deck.id, i)} style={{ cursor: "pointer", border: "2px solid " + (deck.activeSlideIdx === i ? C.red : C.line), background: C.pane, padding: 4, marginBottom: 4 }}>
+                <div style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 2 }}>
+                  <span style={{ color: C.faint, fontSize: 9, width: 14 }}>{i + 1}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sn ? sn.name : "text"}</span>
+                  <span onClick={(e) => { e.stopPropagation(); w.moveSlide(deck.id, s.id, -1); }} style={{ cursor: "pointer", color: C.ink, fontSize: 10 }} title="move up">↑</span>
+                  <span onClick={(e) => { e.stopPropagation(); w.moveSlide(deck.id, s.id, 1); }} style={{ cursor: "pointer", color: C.ink, fontSize: 10 }} title="move down">↓</span>
+                  <span onClick={(e) => { e.stopPropagation(); w.removeSlide(deck.id, s.id); }} style={{ cursor: "pointer", color: C.red, fontWeight: 700 }} title="remove slide">×</span>
+                </div>
+                <div style={{ fontSize: 8.5, color: C.faint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(s.markdown || "").split("\n")[0] || "(empty)"}</div>
+              </div>
+            );
+          })}
+          {deck.slides.length === 0 && <div style={{ color: C.faint, fontSize: 11 }}>no slides. add one above.</div>}
+        </div>
+        {/* slide editor */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+          {slide ? (
+            <>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "6px 8px", borderBottom: "1px solid " + C.line, flexShrink: 0 }}>
+                <span style={{ fontSize: 10, fontWeight: 700 }}>CHART</span>
+                {snap ? (
+                  <P ptype="chart" value={snap.id} onActivate={() => w.restoreSnap(snap.id)} activateDoc="restore into active doc" doc={"snapshot " + snap.name}>
+                    <b style={{ fontSize: 11, borderBottom: "1px dotted " + C.faint, cursor: "pointer" }}>{snap.name}</b>
+                  </P>
+                ) : <span style={{ color: C.faint, fontSize: 10.5 }}>(text-only slide)</span>}
+                <TBtn doc="accept a <chart> snapshot for this slide" onClick={async () => { const r = await ui.accept("chart", "MAP slide " + (deck.activeSlideIdx + 1) + " ↦ click a CHART snapshot (Esc cancels)"); if (r) w.setSlideSnap(deck.id, slide.id, r.value); }}>⌖ set chart…</TBtn>
+                <TBtn doc="clear the chart from this slide" disabled={!slide.snapId} onClick={() => w.setSlideSnap(deck.id, slide.id, null)}>× clear</TBtn>
+              </div>
+              <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+                <textarea value={slide.markdown} onChange={(e) => w.setSlideMarkdown(deck.id, slide.id, e.target.value)} placeholder="markdown…  (supports # heading, **bold**, *italic*, `code`, - lists, 1. ordered)"
+                  style={{ flex: 1, minHeight: 0, border: "none", borderRight: "2px solid " + C.ink, background: C.pane, fontFamily: "ui-monospace, monospace", fontSize: 12, padding: "8px 10px", resize: "none", outline: "none" }} />
+                <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: "8px 12px", background: "#fffdf7" }}>
+                  {snap && <div style={{ marginBottom: 8 }}><MiniPlot chart={snap.chart} W={300} H={180} /></div>}
+                  <div style={{ fontSize: 13 }}>{renderMarkdown(slide.markdown, "slide-" + slide.id)}</div>
+                </div>
+              </div>
+            </>
+          ) : <div style={{ padding: 16, color: C.faint }}>no slide selected. add one in the left panel.</div>}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
    APP · INSPECTOR / WATCHLIST / TRACE / ABOUT / LAUNCHER
    ============================================================ */
 function InspectorApp() {
@@ -2211,6 +2290,7 @@ const APPS = {
   table: { title: "table", color: C.mint, comp: TableApp },
   gallery: { title: "snapshots", color: C.lavender, comp: GalleryApp },
   compare: { title: "compare a/b", color: C.rose, comp: CompareApp },
+  deck: { title: "slide deck", color: C.red, comp: DeckApp },
   watch: { title: "watchlist", color: C.mustard, comp: WatchlistApp },
   inspector: { title: "inspector", color: C.lavender, comp: InspectorApp },
   trace: { title: "trace", color: C.sage, comp: TraceApp },
@@ -2242,6 +2322,10 @@ const initialSpaces = (world) => {
     {
       id: nid(), name: "gallery",
       tree: split("row", leaf("gallery"), split("col", leaf("compare"), leaf("trace"), 0.55), 0.46),
+    },
+    {
+      id: nid(), name: "deck",
+      tree: split("row", leaf("deck"), split("col", leaf("gallery"), leaf("trace"), 0.5), 0.42),
     },
     { id: nid(), name: "help", tree: split("row", leaf("about"), split("col", leaf("watch"), leaf("trace"), 0.5), 0.5) },
     { id: nid(), name: "1·objects", tree: split("row", leaf("tut1"), split("col", leaf("data"), leaf("inspector"), 0.55), 0.44) },
@@ -2349,6 +2433,7 @@ export default function App() {
     if (ptype === "chart") { const s = world.snaps.find((x) => x.id === value); return s ? s.name : "(deleted snapshot)"; }
     if (ptype === "tile") { const l = findLeaf(tree, value); return l ? "[" + APPS[l.app].title + "]" : "(closed tile)"; }
     if (ptype === "workspace") { const s = spaces.find((x) => x.id === value); return s ? s.name : "?"; }
+    if (ptype === "deck") { const d = world.decks.find((x) => x.id === value); return d ? d.name : "(deleted deck)"; }
     return String(value);
   };
   const describe = (ptype, value) => {
@@ -2367,6 +2452,7 @@ export default function App() {
     if (ptype === "chart") { const s = world.snaps.find((x) => x.id === value); return s ? { presentationType: "chart", name: s.name, at: s.at, spec: s.chart } : null; }
     if (ptype === "tile") { const l = findLeaf(tree, value); return { presentationType: "tile", app: l ? APPS[l.app].title : "(closed)", workspace: space.name }; }
     if (ptype === "workspace") { const s = spaces.find((x) => x.id === value); return { presentationType: "workspace", name: s && s.name, tiles: s && countLeaves(s.tree) }; }
+    if (ptype === "deck") { const d = world.decks.find((x) => x.id === value); return d ? { presentationType: "deck", name: d.name, slides: d.slides.length } : null; }
     return { presentationType: ptype, value: String(value) };
   };
 
@@ -2436,6 +2522,7 @@ export default function App() {
       acts.push({ label: "Restore as NEW document", run: () => world.restoreAsNew(value) });
       acts.push({ label: "Pin as compare A", run: () => world.pinSnap(0, value) });
       acts.push({ label: "Pin as compare B", run: () => world.pinSnap(1, value) });
+      acts.push({ label: "Add to active deck as a slide", run: () => world.addSnapToActiveDeck(value) });
       acts.push({ label: "Delete snapshot", run: () => world.deleteSnap(value) });
       acts.push({ label: "Add to watchlist", run: () => world.watchAdd("chart", value) });
     }
@@ -2450,6 +2537,16 @@ export default function App() {
       acts.push({ label: "Rename", run: () => setRenaming(value) });
       acts.push({ label: "Duplicate", run: () => cloneSpace(value) });
       if (spaces.length > 1) acts.push({ label: "Delete", run: () => removeSpace(value) });
+    }
+    if (ptype === "deck") {
+      const d = world.decks.find((x) => x.id === value);
+      if (d) {
+        if (world.activeDeckId !== d.id) acts.push({ label: "Make ACTIVE deck", run: () => { world.activeDeckId = d.id; world.bump(); } });
+        acts.push({ label: "▶ Present this deck", run: () => world.startPresent(d.id) });
+        acts.push({ label: "Export deck as .zip", run: () => exportDeck(world, d.id) });
+        acts.push({ label: "Rename", run: () => { const nm = window.prompt("deck name", d.name); if (nm) world.renameDeck(d.id, nm); } });
+        if (world.decks.length > 1) acts.push({ label: "Delete deck", run: () => world.deleteDeck(d.id) });
+      }
     }
     return acts;
   };
