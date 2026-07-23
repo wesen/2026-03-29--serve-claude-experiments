@@ -1263,7 +1263,7 @@ function PlotSVG({ chart, W, H, docId }) {
   };
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
-      <svg viewBox={"0 0 " + (W - plot.legendW) + " " + H} style={{ width: "100%", maxWidth: W - plot.legendW, display: "block" }}>
+      <svg viewBox={"0 0 " + (W - plot.legendW) + " " + H} data-chart-doc={docId} style={{ width: "100%", maxWidth: W - plot.legendW, display: "block" }}>
         {plot.panels.map((p, pi) => <PanelFrame key={pi} p={p} plot={plot} />)}
         <AxisLabels plot={plot} first={first} last={plot.panels[plot.panels.length - 1]} />
         {plot.panels.map((p, pi) => (
@@ -1328,6 +1328,29 @@ function MiniPlot({ chart, W, H }) {
 /* ============================================================
    APP · DATA BROWSER — datasets and their fields
    ============================================================ */
+/* Bundle a dataset (CSV + optional chart PNG + spec JSON) into a .zip. */
+async function bundleDataset(world, datasetId) {
+  const ds = DATASETS[datasetId];
+  if (!ds) return;
+  const zip = new ZipWriter();
+  await zip.add(datasetId + ".csv", datasetToCSV(ds));
+  /* rasterize the chart SVG for a document using this dataset (if any on screen) */
+  const docs = world.docs.filter((d) => d.chart.datasetId === datasetId);
+  if (docs.length) {
+    const specs = docs.map((d) => ({ name: d.name, datasetId: d.chart.datasetId, steps: d.chart.steps, mapping: d.chart.mapping, geom: d.chart.geom, yScale: d.chart.yScale }));
+    await zip.add(datasetId + "-specs.json", JSON.stringify(specs, null, 2));
+  }
+  const svg = docs.map((d) => document.querySelector('svg[data-chart-doc="' + d.id + '"]')).find(Boolean);
+  if (svg) {
+    try {
+      const png = await svgToPngBlob(svg, 2);
+      const bytes = new Uint8Array(await png.arrayBuffer());
+      await zip.add(datasetId + "-chart.png", bytes, { store: true });
+    } catch (e) { console.warn("chart PNG rasterization skipped", e); }
+  }
+  const blob = await zip.blob();
+  downloadBlob(blob, datasetId + "-bundle.zip");
+}
 function DataApp() {
   const ui = useUI(); const w = ui.world;
   const act = w.active();
@@ -1398,7 +1421,10 @@ function DataApp() {
             <span style={{ color: C.faint, fontSize: 10 }}>{d.rows.length} rows</span>
             {uploaded && <span style={{ color: C.mustard, fontSize: 8.5, fontWeight: 700, border: "1px solid " + C.mustard, padding: "0 4px" }}>UPLOADED</span>}
             {act.chart.datasetId === d.id && <span style={{ color: C.red, fontSize: 9.5, fontWeight: 700 }}>← SOURCE of {act.name}</span>}
-            {uploaded && <span onClick={() => { w.removeDataset(d.id); deletePersistedDataset(d.id); }} title="delete this uploaded dataset" style={{ cursor: "pointer", color: C.red, fontWeight: 700, marginLeft: "auto" }}>×</span>}
+            <span style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+              <span onClick={() => bundleDataset(w, d.id)} title="download .zip bundle (CSV + chart PNG + specs)" style={{ cursor: "pointer", color: C.blue, fontWeight: 700, border: "1px solid " + C.ink, background: C.pane, padding: "0 6px", fontSize: 10 }}>↓ bundle</span>
+              {uploaded && <span onClick={() => { w.removeDataset(d.id); deletePersistedDataset(d.id); }} title="delete this uploaded dataset" style={{ cursor: "pointer", color: C.red, fontWeight: 700 }}>×</span>}
+            </span>
           </div>
           <div style={{ color: C.faint, fontSize: 10, marginBottom: 4 }}>{d.note}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
