@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useContext } from "react";
+import { createRoot } from "react-dom/client";
 
 /* ============================================================
    PBUI SHELL — GRAMMAR OF GRAPHICS WORKBENCH
@@ -217,6 +218,31 @@ const DATASETS = {
    ============================================================ */
 const OPFS_DIR = "pbui-datasets";
 const LS_INDEX_KEY = "pbui-datasets-index";
+const LS_SPACES_KEY = "pbui-workspaces";
+
+/* workspace layout persistence: save the split tree + active space id so a
+   reload restores the user's arrangement. doc ids (d1, d2…) are produced
+   deterministically by World, so they survive across loads. */
+function loadSpaces(world) {
+  try {
+    const raw = localStorage.getItem(LS_SPACES_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.spaces) || !parsed.spaces.length) return null;
+    /* bump the leaf-id counter past the highest restored id so nid()
+       never collides with a restored tile id (collision = React key +
+       drag/hit-test confusion). */
+    let maxN = 0;
+    const visit = (n) => { const m = Number(String(n.id).replace(/^n/, "")); if (Number.isFinite(m) && m > maxN) maxN = m; if (n.type === "split") { visit(n.a); visit(n.b); } };
+    parsed.spaces.forEach((s) => visit(s.tree));
+    if (maxN >= idc) idc = maxN + 1;
+    return { spaces: parsed.spaces, cur: parsed.cur && parsed.spaces.some((s) => s.id === parsed.cur) ? parsed.cur : parsed.spaces[0].id };
+  } catch (e) { console.warn("could not restore workspaces", e); return null; }
+}
+function saveSpaces(spaces, cur) {
+  try { localStorage.setItem(LS_SPACES_KEY, JSON.stringify({ spaces, cur })); }
+  catch (e) { console.warn("could not save workspaces", e); }
+}
 
 const opfsSupported = () => typeof navigator !== "undefined" && navigator.storage && navigator.storage.getDirectory;
 
@@ -1445,9 +1471,50 @@ function renderMarkdown(md, baseKey = "md") {
 /* ============================================================
    APP · DATA BROWSER — datasets and their fields
    ============================================================ */
-/* Export a deck as a single .zip (deck.md + one PNG per chart slide).
-   Implemented in Phase C; stub here so DeckApp parses in Phase B. */
-async function exportDeck(world, deckId) { /* Phase C */ console.log("exportDeck stub", deckId); }
+/* Export a deck as a single .zip: deck.md (slides as markdown with image refs) +
+   one PNG per chart slide (rendered from a temporary MiniPlot SVG). */
+async function exportDeck(world, deckId) {
+  const deck = world.deck(deckId);
+  if (!deck) return;
+  const zip = new ZipWriter();
+  const mdParts = [];
+  for (let i = 0; i < deck.slides.length; i++) {
+    const s = deck.slides[i];
+    const snap = s.snapId ? world.snaps.find((x) => x.id === s.snapId) : null;
+    let part = "## Slide " + (i + 1) + "\n\n";
+    if (snap) {
+      part += "![" + snap.name + "](slide-" + (i + 1) + ".png)\n\n";
+      /* rasterize this slide's chart into a PNG via a detached MiniPlot SVG */
+      try {
+        const holder = document.createElement("div");
+        holder.style.cssText = "position:absolute;left:-99999px;top:0;width:1px;height:1px;overflow:hidden";
+        document.body.appendChild(holder);
+        const root = createRoot(holder);
+        if (root) {
+          await new Promise((res) => {
+            root.render(React.createElement(MiniPlot, { chart: snap.chart, W: 560, H: 340 }));
+            setTimeout(res, 30);
+          });
+          const svg = holder.querySelector("svg");
+          if (svg) {
+            const png = await svgToPngBlob(svg, 2);
+            const bytes = new Uint8Array(await png.arrayBuffer());
+            await zip.add("slide-" + (i + 1) + ".png", bytes, { store: true });
+          }
+          root.unmount();
+        }
+        document.body.removeChild(holder);
+      } catch (e) { console.warn("slide " + (i + 1) + " PNG skipped", e); }
+    }
+    part += s.markdown || "";
+    mdParts.push(part);
+  }
+  const md = "# " + deck.name + "\n\n" + mdParts.join("\n\n---\n\n") + "\n";
+  await zip.add("deck.md", md);
+  const blob = await zip.blob();
+  downloadBlob(blob, deck.name + "-deck.zip");
+  world.log("deck_exported", { deck: deck.name, slides: deck.slides.length });
+}
 /* Bundle a dataset (CSV + optional chart PNG + spec JSON) into a .zip. */
 async function bundleDataset(world, datasetId) {
   const ds = DATASETS[datasetId];
@@ -1955,6 +2022,59 @@ function DeckApp() {
 }
 
 /* ============================================================
+   APP · PRESENT — full-screen slide deck overlay
+   ============================================================ */
+function PresentApp() {
+  const ui = useUI(); const w = ui.world;
+  const deck = w.presentingDeck ? w.deck(w.presentingDeck) : null;
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!w.presentingDeck) return;
+      e.stopPropagation();
+      const d = w.deck(w.presentingDeck); if (!d) return;
+      if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") { e.preventDefault(); w.setActiveSlide(d.id, d.activeSlideIdx + 1); }
+      else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); w.setActiveSlide(d.id, d.activeSlideIdx - 1); }
+      else if (e.key === "Home") { e.preventDefault(); w.setActiveSlide(d.id, 0); }
+      else if (e.key === "End") { e.preventDefault(); w.setActiveSlide(d.id, d.slides.length - 1); }
+      else if (e.key === "Escape") { e.preventDefault(); w.stopPresent(); }
+      else if (e.key === "e" || e.key === "E") { e.preventDefault(); setEditing((x) => !x); }
+    };
+    window.addEventListener("keydown", onKey, true);   /* capture-phase */
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [w]);
+  if (!deck || !deck.slides.length) return null;
+  const slide = deck.slides[deck.activeSlideIdx];
+  const snap = slide && slide.snapId ? w.snaps.find((x) => x.id === slide.snapId) : null;
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 500, background: C.paper, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "8px 16px", background: C.ink, color: C.paper, flexShrink: 0 }}>
+        <b style={{ fontSize: 13 }}>{deck.name}</b>
+        <span style={{ color: C.mustard, fontSize: 11 }}>slide {deck.activeSlideIdx + 1} / {deck.slides.length}</span>
+        <span style={{ flex: 1 }} />
+        <span style={{ color: C.faint, fontSize: 10 }}>→ / Space next · ← prev · Home/End · E edit · Esc exit</span>
+        <button onClick={() => w.stopPresent()} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 700, border: "2px solid " + C.paper, background: "transparent", color: C.paper, padding: "2px 10px", cursor: "pointer" }}>✕ exit (Esc)</button>
+      </div>
+      <div style={{ flex: 1, display: "flex", minHeight: 0, padding: 24, gap: 24, overflow: "auto" }}>
+        {snap && (
+          <div style={{ flex: "0 1 60%", display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0 }}>
+            <PlotSVG chart={snap.chart} W={620} H={400} docId={null} />
+          </div>
+        )}
+        <div style={{ flex: snap ? "0 1 38%" : "1", display: "flex", flexDirection: "column", justifyContent: "center", maxWidth: 560 }}>
+          {editing ? (
+            <textarea value={slide.markdown} onChange={(e) => w.setSlideMarkdown(deck.id, slide.id, e.target.value)} autoFocus
+              style={{ flex: 1, minHeight: 200, border: "2px solid " + C.ink, background: C.pane, fontFamily: "ui-monospace, monospace", fontSize: 13, padding: 10, resize: "none", outline: "none" }} />
+          ) : (
+            <div style={{ fontSize: 15, lineHeight: 1.6 }}>{renderMarkdown(slide.markdown, "present-" + slide.id)}</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
    APP · INSPECTOR / WATCHLIST / TRACE / ABOUT / LAUNCHER
    ============================================================ */
 function InspectorApp() {
@@ -2355,8 +2475,14 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [spaces, setSpaces] = useState(() => initialSpaces(world));
-  const [cur, setCur] = useState(() => spaces[0].id);
+  const [spaces, setSpaces] = useState(() => {
+    const restored = loadSpaces(world);
+    return restored ? restored.spaces : initialSpaces(world);
+  });
+  const [cur, setCur] = useState(() => {
+    const restored = loadSpaces(world);
+    return restored ? restored.cur : spaces[0].id;
+  });
   const [renaming, setRenaming] = useState(null);
   const [menu, setMenu] = useState(null);
   const [accepting, setAccepting] = useState(null);
@@ -2364,6 +2490,9 @@ export default function App() {
   const [drag, setDrag] = useState(null);
   const dragRef = useRef(null); dragRef.current = drag;
   const leafRefs = useRef({});
+
+  /* persist the workspace layout to localStorage on every change */
+  useEffect(() => { saveSpaces(spaces, cur); }, [spaces, cur]);
 
   const space = spaces.find((s) => s.id === cur) || spaces[0];
   const tree = space.tree;
@@ -2635,6 +2764,8 @@ export default function App() {
             ))}
           </div>
         )}
+
+        {world.presentingDeck && <PresentApp />}
       </div>
     </UICtx.Provider>
   );
