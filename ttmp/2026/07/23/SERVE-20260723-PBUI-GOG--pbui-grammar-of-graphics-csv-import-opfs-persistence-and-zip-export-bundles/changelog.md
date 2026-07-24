@@ -41,3 +41,39 @@ Step 7: write slide deck builder design doc (slides referencing snapshots, inlin
 
 - /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/ttmp/2026/07/23/SERVE-20260723-PBUI-GOG--pbui-grammar-of-graphics-csv-import-opfs-persistence-and-zip-export-bundles/design-doc/02-slide-deck-builder-design-and-implementation-guide.md — slide deck builder design
 
+
+## 2026-07-23
+
+Step 8: deck model (World.decks/slide methods) + inline markdown renderer, Phase A (commit 47f2d62)
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/imports/pbui-gog.jsx — World.decks, deck/slide methods, renderMarkdown
+
+
+## 2026-07-23
+
+Step 9: DeckApp editor + deck workspace + chart menu 'add to slide' verb, Phase B (commit 8591e43)
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/imports/pbui-gog.jsx — DeckApp, deck app/workspace, deck ptype actions
+
+
+## 2026-07-23
+
+Step 10: PresentApp overlay (keyboard nav) + exportDeck ZIP (deck.md + per-slide PNGs), Phase C (commit 2e3752c)
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/imports/pbui-gog.jsx — PresentApp, exportDeck, createRoot import
+
+
+## 2026-07-23
+
+Step 11: persist workspace layout (split tree + active space) to localStorage with idc counter bump to prevent leaf-id collisions (commit 2e3752c)
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-03-29--serve-claude-experiments/imports/pbui-gog.jsx — loadSpaces/saveSpaces, LS_SPACES_KEY, idc bump
+

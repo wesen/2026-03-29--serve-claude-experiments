@@ -39,6 +39,10 @@ topics:
       description: 'topic: zip'
     - slug: diary
       description: 'topic: diary'
+    - slug: markdown
+      description: 'topic: markdown'
+    - slug: slides
+      description: 'topic: slides'
 docTypes:
     - slug: design-doc
       description: Structured rationale and architecture notes

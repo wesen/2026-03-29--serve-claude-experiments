@@ -10,13 +10,16 @@ Topics:
 DocType: design-doc
 Intent: long-term
 Owners: []
-RelatedFiles: []
+RelatedFiles:
+    - Path: repo://imports/pbui-gog.jsx
+      Note: deck builder (DeckApp/PresentApp/exportDeck) implemented per this guide
 ExternalSources: []
-Summary: "Design for a slide deck builder app that composes chart snapshots and markdown text into ordered slides, with a present mode and a deck-list view."
-LastUpdated: "2026-07-23T17:10:00-04:00"
-WhatFor: "Designing and implementing the slide deck builder in pbui-gog.jsx"
-WhenToUse: "When implementing or reviewing the slide deck builder"
+Summary: Design for a slide deck builder app that composes chart snapshots and markdown text into ordered slides, with a present mode and a deck-list view.
+LastUpdated: 2026-07-23T17:10:00-04:00
+WhatFor: Designing and implementing the slide deck builder in pbui-gog.jsx
+WhenToUse: When implementing or reviewing the slide deck builder
 ---
+
 
 # Slide deck builder: design and implementation guide
 

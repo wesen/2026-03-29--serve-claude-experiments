@@ -10,13 +10,16 @@ Intent: long-term
 Owners: []
 RelatedFiles:
     - Path: repo://imports/pbui-gog.jsx
-      Note: the artifact implementing CSV import, OPFS persistence, and ZIP export (Steps 1-6)
+      Note: |-
+        the artifact implementing CSV import, OPFS persistence, and ZIP export (Steps 1-6)
+        deck builder + workspace persistence (Steps 7-11) implemented in this artifact
 ExternalSources: []
 Summary: 'Chronological implementation diary for pbui-gog.jsx: import, CSV upload, OPFS persistence, and ZIP export bundles.'
 LastUpdated: 2026-07-23T16:45:00-04:00
 WhatFor: Recording the step-by-step implementation journey for the pbui-gog work
 WhenToUse: When resuming or reviewing pbui-gog work
 ---
+
 
 
 # Diary
@@ -352,3 +355,274 @@ This step connected the Step 5 helpers to the UI: a `bundleDataset()` orchestrat
 
 ### What I'd do differently next time
 - Add the `data-chart-doc` tag in the same commit as the SVG helper, since PNG-matching is the obvious correctness risk — I caught it in testing, but it's the kind of invariant that belongs in the design from the start.
+
+---
+
+## Step 7: Write slide deck builder design doc
+
+This step produced the design document for the slide deck builder before any deck code was written. The guide defines the data model (slides reference snapshot ids, not cloned specs), the zero-dependency inline markdown renderer, the accept-flow for adding snapshots to slides, a full-screen present overlay, and deck ZIP export reusing the Step 5 ZipWriter. Five decision records lock the key choices.
+
+**Commit (docs):** b736db3 — "docs(pbui-gog): slide deck builder design guide"
+
+### Prompt Context
+
+**User prompt (verbatim):** "Instead of just a snapshot gallery, also add a slide deck builder where one can add snapshots to a slide, but also markdown text. Create a detailed design / implementation guide, then implement it."
+
+**Assistant interpretation:** Design a deck builder that composes chart snapshots + markdown into ordered slides, then implement it across phased commits with a diary.
+
+**Inferred user intent:** Let users sequence frozen charts with explanatory prose into a presentable narrative — a data story, not just a gallery.
+
+### What I did
+- Gathered line-anchored evidence: `World.snapshot`/`snaps[]` (`:750`), `<chart>` presentation handlers in `labelFor`/`describe`/`actionsFor` (`:2231`/`:2249`/`:2316`), `MiniPlot` (`:1308`), the accept protocol, `APPS`/`initialSpaces` (`:2086`/`:2109`), and the Step 5 `ZipWriter`/`svgToPngBlob`/`downloadBlob` for reuse.
+- Wrote `design-doc/02-slide-deck-builder-design-and-implementation-guide.md`: exec summary, problem/scope, current-state analysis, gap table, proposed architecture (Deck model, `renderMarkdown`, `DeckApp`, `PresentApp`, `exportDeck`), 5 decision records (snapId reference vs clone; inline mini-markdown vs library; present overlay vs route; interactive `PlotSVG` vs `MiniPlot` in present; session-only decks for v1), pseudocode, 3-phase plan, test strategy, risks.
+- Created docmgr tasks 7–10, marked task 7 done, updated changelog.
+
+### Why
+- Design-first forces the snapId-vs-clone and markdown-library decisions to be explicit before coding. Decks referencing `snapId` (not clones) keeps a single source of truth and graceful degradation when a snapshot is deleted — a property that's hard to retrofit.
+
+### What worked
+- The guide is concrete enough to implement directly: exact method signatures, ZIP entry layout, keyboard map for present mode.
+
+### What didn't work
+- (Nothing failed.)
+
+### What I learned
+- The shell already had every primitive the deck needs (snapshots, accept protocol, `MiniPlot`, `APPS` registry, ZipWriter). The deck is pure composition — the design doc makes that explicit via the gap table.
+
+### What was tricky to build
+- N/A (design step). The tricky bits (keyboard capture, deleted-snapshot defense, off-screen SVG rasterization for export) are called out as risks and handled in Steps 8–10.
+
+### What warrants a second pair of eyes
+- The decision to use interactive `PlotSVG` (not `MiniPlot`) in present mode: a live, R-clickable chart mid-presentation is distinctive but means present-mode charts are read-only renders of frozen specs (restoring into a live doc is separate). Confirm that matches the "presentation" mental model.
+
+### What should be done in the future
+- If decks prove useful, persist snapshots + decks together (currently both session-only). Persisting decks alone is useless since they reference snapshot ids.
+
+### Code review instructions
+- Read `design-doc/02-slide-deck-builder-design-and-implementation-guide.md`; cross-check line anchors against `imports/pbui-gog.jsx`.
+
+### Technical details
+- Slide schema: `{id, snapId: string|null, markdown: string}`. Deck: `{id, name, slides[], activeSlideIdx}`. Present keys: →/Space/PageDown next, ←/PageUp prev, Home/End, Esc exit, E toggle edit.
+
+---
+
+## Step 8: Add deck model + markdown renderer (Phase A)
+
+This step built the deck data model in `World` and a zero-dependency inline markdown renderer. `World` gained a `decks[]` list with full deck/slide mutation methods, a seeded example deck, and present-mode state. The markdown renderer handles headings, bold, italic, inline code, and ordered/unordered lists — returning React nodes (no `dangerouslySetInnerHTML`). No UI yet; validated by clean parse + render.
+
+**Commit (code):** 47f2d62 — "feat(pbui-gog): add deck model + markdown renderer (Phase A)"
+
+### Prompt Context
+
+**User prompt (verbatim):** (same as Step 7 — "…Create a detailed design / implementation guide, then implement it.")
+
+**Assistant interpretation:** Implement Phase A of the deck design — the model and renderer, no UI.
+
+**Inferred user intent:** Ship the deck data substrate and prose-rendering capability first, so Phase B (UI) has something to bind to.
+
+### What I did
+- Added `deckc`/`slidec` counters to the `seqc` line.
+- Added `World.decks = []`, `activeDeckId`, `presentingDeck` to the constructor, plus a `seedDeck()` call that creates an "intro" deck with 3 slides (2 seeded-snapshot slides + 1 text-only slide demonstrating lists/italic/code).
+- Added deck methods: `activeDeck`, `deck`, `newDeck`, `renameDeck`, `deleteDeck`, `addSlide`, `addSnapToActiveDeck`, `removeSlide`, `moveSlide`, `setSlideSnap`, `setSlideMarkdown` (no trace log — too chatty, just `bump`), `setActiveSlide`, `startPresent`, `stopPresent`.
+- Added `renderInline(text, key)` + `renderMarkdown(md, baseKey)`: splits on blank lines into blocks; classifies `#`/`##`/`###` headings, `-`/`*` bullet lists, `N.` ordered lists, else paragraphs; inline pass splits on `**bold**`/`*italic*`/`` `code` ``.
+- Added `deck_*`, `slide_*`, `present_*` trace event colors to `EV_COLOR`.
+- Verified: reloaded page, 0 console errors.
+
+### Why
+- Slides reference `snapId` (Decision 1) so the model stays tiny and the snapshot stays the single source of truth. `setSlideMarkdown` skips `log()` because every keystroke would flood the trace; it just `bump()`s to re-render.
+
+### What worked
+- Clean parse on first load; the seeded "intro" deck appears in the (not-yet-built) deck state. The markdown renderer's inline single-regex pass handles the common cases without a parser dependency.
+
+### What didn't work
+- (Nothing failed in this step.)
+
+### What I learned
+- A ~40-line markdown renderer covers ~95% of slide-prose needs (headings, emphasis, code, lists). The gap vs CommonMark (tables, raw HTML, nested lists) is acceptable and documented.
+
+### What was tricky to build
+- The inline parser ordering: `**bold**` must be matched before `*italic*` or the italic rule eats the double-asterisk. Solved by one regex alternation `(\*\*(.+?)\*\*|\*(.+?)\*|` `(.+?)` `)` tried left-to-right.
+- `setSlideMarkdown` mutates a nested object (`deck.slides[i].markdown`); since `World` state isn't immutable React state, `bump()` (a force-update) is what propagates the change. Same pattern as the rest of `World`.
+
+### What warrants a second pair of eyes
+- `deleteDeck` refuses when `< 2` decks (mirrors `deleteDoc`). Confirm that's the desired floor — a user might want to delete the last deck to get a clean slate.
+- `setActiveSlide` clamps `idx` but doesn't `log()`; intentional (navigation is chatty) but means the trace won't show slide-to-slide moves in present mode.
+
+### What should be done in the future
+- If decks persist, snapshot deletion must cascade-clean `slide.snapId` across all decks (currently leaves an orphan id defended by `.find()` returning undefined at render time).
+
+### Code review instructions
+- `grep -n "activeDeck()\|newDeck\|addSlide\|renderMarkdown" imports/pbui-gog.jsx`
+- Console: after load, the deck workspace (Step 9) shows the seeded 3-slide "intro" deck.
+
+### Technical details
+- `renderMarkdown` returns an array of React elements keyed by `baseKey + "-" + blockIndex`; each block's inline spans keyed `baseKey + "-" + bi + "-" + li`.
+
+---
+
+## Step 9: Build DeckApp editor + workspace + chart menu verb (Phase B)
+
+This step built the `DeckApp` editor UI and wired it into the shell. The editor has a deck selector strip, a slide list (add/remove/reorder, click-to-activate), and a slide editor (chart accept, markdown textarea with live preview). It registers a `deck` app, adds a deck workspace, makes `deck` a first-class presentation type in `labelFor`/`describe`/`actionsFor`, and adds an "Add to active deck as a slide" verb on `<chart>` snapshots. An `exportDeck` stub was added so Phase B parses before Phase C implements it.
+
+**Commit (code):** 8591e43 — "feat(pbui-gog): DeckApp editor + workspace + chart menu verb (Phase B)"
+
+### Prompt Context
+
+**User prompt (verbatim):** (same as Step 7)
+
+**Assistant interpretation:** Implement Phase B — the DeckApp editor and shell integration.
+
+**Inferred user intent:** A usable deck editor where one can assemble snapshots + markdown into slides.
+
+### What I did
+- Wrote `DeckApp`: deck strip (chips + `+ deck` + `▶ present` + `↓ export zip`), left slide-list panel (`+ slide`, `+ chart slide…` accept, per-slide ↑↓× + thumbnail + markdown first-line), right slide editor (chart chip + `⌖ set chart…` accept + `× clear`, a markdown textarea, and a live `renderMarkdown` preview with an optional `MiniPlot` thumbnail).
+- Registered `deck` in `APPS` (`{ title: "slide deck", color: C.red, comp: DeckApp }`) and added a `deck` workspace to `initialSpaces` (deck | gallery/trace).
+- Added `deck` to `labelFor`/`describe`/`actionsFor`: deck chip menu has "Make ACTIVE deck", "▶ Present", "Export .zip", "Rename", "Delete".
+- Added "Add to active deck as a slide" to the `ptype === "chart"` actions (calls `world.addSnapToActiveDeck(value)`).
+- Added an `exportDeck` stub so Phase B parses before Phase C.
+- Verified: deck workspace renders the seeded 3-slide deck; `+ slide` adds a 4th; typing markdown updates the live preview.
+
+### Why
+- The deck strip mirrors the workspace-chip pattern; the slide-list/editor split mirrors common slide-tool UX. Reusing the accept protocol for "+ chart slide…" and "⌖ set chart" keeps the interaction model uniform with the rest of the shell.
+
+### What worked
+- Full editor: add/remove/reorder slides, live markdown preview, accept-flow to add/set a chart snapshot. The seeded deck renders immediately, so the feature is demoable on first load.
+
+### What didn't work
+- First attempt to register `deck` in `APPS` failed silently: my `edit` `oldText` assumed a trailing comma after the `compare` entry that didn't match (the original had `compare: {...},` then `watch: {...},` — my oldText merged them wrongly and the replacement targeted `compare`+`watch` but only matched a subset). The symptom: switching to the deck workspace threw `TypeError: Cannot read properties of undefined (reading 'comp')` at `TileView` because `APPS["deck"]` was undefined. Fixed by re-targeting the edit to insert `deck` between `compare` and `watch` with the correct surrounding context. **Lesson: when an `edit` claims success but a downstream feature is broken, grep for the expected new content to confirm it actually landed.**
+
+### What I learned
+- The `edit` tool reports success per-block, but a block can "succeed" by matching a smaller-than-intended region if the oldText isn't unique/anchored enough. Always verify edits with a grep for the inserted content.
+
+### What was tricky to build
+- The `exportDeck` forward-reference: `DeckApp`'s `↓ export zip` button calls `exportDeck`, which is implemented in Phase C. Adding a stub (logging only) lets Phase B parse and render; Phase C replaces the body. This is a deliberate phased-decomposition tradeoff.
+
+### What warrants a second pair of eyes
+- `addSnapToActiveDeck` creates a deck if none exists (`if (!this.activeDeck()) this.newDeck()`) — confirm this implicit creation is desired vs. erroring with "create a deck first".
+- The slide-list click-to-activate also fires on the ↑/↓/× controls; they `e.stopPropagation()` to prevent that. Verify no control misses the stop.
+
+### What should be done in the future
+- Drag-to-reorder slides (currently ↑/↓ buttons only). The shell's drag infra could be reused but it's tile-oriented; slide drag is a separate concern.
+- A slide `<slide>` presentation type so slides themselves are inspectable/referenced — explicitly out of scope per Decision (rejected) in the design doc.
+
+### Code review instructions
+- `grep -n "function DeckApp\|ptype === \"deck\"\|addSnapToActiveDeck" imports/pbui-gog.jsx`
+- Reproduce: deck workspace → deck tile shows 3 slides → `+ slide` → type markdown → preview updates.
+
+### Technical details
+- `DeckApp` uses `w.activeDeck()` (falls back to `decks[0]`); the deck strip sets `w.activeDeckId = d.id; w.bump()` directly rather than a method (minor inconsistency with the `setActive` pattern elsewhere — noted).
+
+---
+
+## Step 10: Add present mode + deck ZIP export (Phase C)
+
+This step built the full-screen `PresentApp` overlay with keyboard navigation and the `exportDeck` ZIP exporter (reusing the Step 5 `ZipWriter` + `svgToPngBlob`). Present mode renders the active slide's chart via interactive `PlotSVG` plus rendered markdown, with →/←/Home/End/E/Esc keys. Deck export zips `deck.md` (slides as markdown with image refs) + one PNG per chart slide, rasterized by mounting a temporary `MiniPlot` to a detached DOM node.
+
+**Commit (code):** 2e3752c — "feat(pbui-gog): persist workspace layout to localStorage" (⚠️ see "What was tricky")
+
+### Prompt Context
+
+**User prompt (verbatim):** (Step 7 request continued, then the user redirected: "Save workspace setup in localstorage to not lose it.")
+
+**Assistant interpretation:** Implement Phase C — present mode + export — then (per the redirect) workspace persistence.
+
+**Inferred user intent:** A presentable deck (full-screen, keyboard-driven) and a portable export.
+
+### What I did
+- Wrote `PresentApp`: fixed overlay (z-index 500), header with deck name + `slide N / M` + hint + exit button, body with the slide's `PlotSVG` (interactive, `docId={null}`) on the left and rendered markdown (or a textarea in edit mode) on the right. Capture-phase `keydown` listener handles →/Space/PageDown, ←/PageUp, Home, End, `E` (toggle edit), Esc (exit) with `stopPropagation` + `preventDefault`.
+- Mounted `{world.presentingDeck && <PresentApp />}` at the App root (inside `UICtx.Provider`, after the menu block).
+- Implemented `exportDeck(world, deckId)`: builds a `ZipWriter`; for each slide, if it has a snapshot, mounts a temporary `MiniPlot` to a detached `<div>` via `createRoot`, waits for render, `svgToPngBlob`s it at 2×, stores the PNG (`store:true`), unmounts; concatenates `deck.md` (heading + `![name](slide-N.png)` + markdown, joined by `---`); `downloadBlob`.
+- Added `createRoot` import from `"react-dom/client"` (the auto-mount wrapper aliases it, so the artifact must import it explicitly).
+- Verified present mode: overlay shows, ArrowRight navigates slide 1→2, Escape exits.
+- Verified export: downloaded `intro-deck.zip`; `unzip -t` passed; `deck.md` is coherent (3 slides, image refs on 1 & 3, `---` separators); `slide-1.png`/`slide-3.png` are valid 1120×680 RGBA PNGs; slide-2 (text-only) correctly has no PNG.
+
+### Why
+- `PlotSVG` (not `MiniPlot`) in present mode honors Decision 4: a live, R-clickable chart mid-presentation. `exportDeck` reuses the Step 5 ZIP/SVG helpers so no new dependency. Mounting `MiniPlot` to a detached node for rasterization is the cleanest way to PNG a frozen spec without a visible tile.
+
+### What worked
+- Present overlay + keyboard nav + Esc exit, all on first try. Deck export produced a valid zip with coherent markdown + valid PNGs; the text-only slide correctly omitted a PNG.
+
+### What didn't work
+- **Commit hygiene failure:** I implemented Phase C (`PresentApp` + `exportDeck`) but did not commit it separately. When the user then asked for workspace persistence, I implemented that *and* committed it together with the already-uncommitted Phase C changes under the message "feat(pbui-gog): persist workspace layout to localStorage" (commit `2e3752c`). The commit message does not mention present mode or deck export, so `git log`/`git blame` for those features points at a misleadingly-titled commit. This was caught only when later auditing the diary. **Not retroactively rewritten** (history rewrite on a not-yet-pushed branch was possible but the work was already layered correctly; the message is the only defect).
+
+### What I learned
+- **Commit when a phase is verifiably done, before moving to the next request.** I had a clean working tree opportunity after verifying present mode + export and instead jumped to the next feature. The result is a misleading commit. The fix going forward: after each phase's verification, `git add -p` + commit immediately, even if the user's next message is already queued.
+
+### What was tricky to build
+- `exportDeck`'s off-screen rasterization: `MiniPlot` is a React component, so to PNG a frozen chart spec without a visible tile I mount it to a detached `<div>` via `createRoot(holder)`, `root.render(<MiniPlot .../>)`, wait a tick (`setTimeout 30ms`) for the SVG to land, `holder.querySelector("svg")`, rasterize, then `root.unmount()`. The wait is a heuristic; if the chart is heavy the SVG may not be ready at 30ms. Acceptable for the seeded/frozen specs.
+- Keyboard capture: the present `keydown` listener uses capture-phase (`true`) + `stopPropagation` so tile-level shortcuts (Esc-to-abort-accept, etc.) don't fire under the overlay. Verified that Esc exits present, not the accept protocol.
+- `createRoot` import: the serve-artifacts auto-mount wrapper imports `react-dom/client` *aliased* (`__artifactCreateRoot`), so `ReactDOM` global isn't available; the artifact must `import { createRoot } from "react-dom/client"` itself.
+
+### What warrants a second pair of eyes
+- The `setTimeout(30ms)` rasterization wait in `exportDeck` is a race risk for heavy charts. If a slide PNG comes out blank/missing, this is the first suspect. A more robust approach would poll for `holder.querySelector("svg")` up to a timeout.
+- Present mode's `PlotSVG` is rendered with `docId={null}`; R-clicking a mark and choosing a filter verb would call `world.filterToCat(null, …)` which targets the active doc — potentially confusing mid-presentation. Low risk (present mode is for viewing) but worth knowing.
+- `exportDeck`'s detached `createRoot` leaves React 18 concurrent-mode scheduling concerns: `root.render` then immediate `unmount` is synchronous enough here, but in StrictMode dev it could double-render. No effect on output (idempotent render), just wasted work.
+
+### What should be done in the future
+- Replace the `setTimeout(30ms)` rasterization wait with a `requestAnimationFrame` + `querySelector("svg")` poll (bounded retries) for robustness.
+- Add a present-mode progress indicator and a "next deck" affordance (currently one deck per present session).
+- Render the chart legend into the export PNG (currently the legend is an HTML `<div>` sibling to the SVG, so `svgToPngBlob` captures only the plot — same limitation noted in the ZIP export Step 6).
+
+### Code review instructions
+- `grep -n "function PresentApp\|async function exportDeck\|world.presentingDeck && <PresentApp" imports/pbui-gog.jsx`
+- Reproduce: deck workspace → `▶ present` → ArrowRight/ArrowLeft/Home/End/E/Esc. Then `↓ export zip` → `unzip -t` → inspect `deck.md` + PNGs.
+
+### Technical details
+- Present overlay: `position: fixed; inset: 0; z-index: 500`. Keyboard listener: `window.addEventListener("keydown", onKey, true)` (capture phase). Export zip layout: `[slide-1.png? …] deck.md`, PNGs stored method=0, deck.md deflated method=8.
+- `exportDeck` mounts `MiniPlot` at `W=560 H=340`, rasterizes at `scale=2` → 1120×680 PNG.
+
+### What I'd do differently next time
+- Commit Phase C immediately after its verification, under an accurate message, before starting workspace persistence. The interleaving that produced the misleading `2e3752c` was avoidable.
+
+---
+
+## Step 11: Persist workspace layout to localStorage
+
+This step made the workspace/tile layout survive a page reload. The split tree + active space id are saved to `localStorage["pbui-workspaces"]` on every change and restored on init. The critical correctness concern was the leaf-id counter (`idc`): restored tile ids must not collide with newly-created ones, so `loadSpaces` walks the restored trees, finds the max leaf id, and bumps `idc` past it.
+
+**Commit (code):** 2e3752c — "feat(pbui-gog): persist workspace layout to localStorage"
+
+### Prompt Context
+
+**User prompt (verbatim):** "Save workspace setup in localstorage to not lose it."
+
+**Assistant interpretation:** Persist the workspace arrangement (split tree + active workspace) to localStorage so a reload doesn't lose it.
+
+**Inferred user intent:** A user who has arranged their tiles/workspaces shouldn't lose that arrangement on refresh.
+
+### What I did
+- Added `LS_SPACES_KEY = "pbui-workspaces"` + `loadSpaces(world)` / `saveSpaces(spaces, cur)` helpers near the existing OPFS/localStorage helpers.
+- `loadSpaces`: parses `{spaces, cur}`; validates `spaces` is a non-empty array and `cur` exists within it; walks each tree collecting leaf/split ids, finds the max numeric id, and sets `idc = maxN + 1` so future `nid()` calls never reuse a restored id.
+- Changed the `spaces` `useState` initializer to try `loadSpaces` first, falling back to `initialSpaces(world)`; same for `cur`.
+- Added a `useEffect(() => { saveSpaces(spaces, cur); }, [spaces, cur])` to persist on every change.
+- Verified: added a workspace + split a tile → reload → layout restored (10 workspaces, custom split tree, active space restored, status line "2 tiles · 10 workspaces"). After reload, a fresh split produced ids `n61`/`n62` — both above the restored max of `60`, confirming no collision.
+
+### Why
+- The leaf-id collision is the real risk: if `idc` weren't bumped past restored ids, `nid()` could return an id already in a restored tree, confusing React keys and the drag/hit-test (`leafRefs` keyed by id). Doc ids (`d1`,`d2`) are deterministic from `World`, so chart/table/pipeline tiles re-bind correctly without extra persistence.
+
+### What worked
+- End-to-end persistence + counter bump verified by the split→reload→split sequence (no collision).
+
+### What didn't work
+- (Nothing failed functionally.) As noted in Step 10, this commit also bundled the uncommitted Phase C deck code — a commit-hygiene defect, not a code defect.
+
+### What I learned
+- `localStorage` serialization of the tree is trivial (it's plain JSON-able objects); the only subtlety is the id-counter invariant, which is invisible until a collision manifests as a mysterious drag/React-key bug. Documenting it in `loadSpaces` is essential.
+
+### What was tricky to build
+- The id-counter invariant: not obvious that it's needed. The symptom of getting it wrong (a restored tile id colliding with a new one) would be a subtle, hard-to-reproduce drag/key bug. The fix (bump `idc` past restored max) is a one-liner but only obvious in hindsight.
+
+### What warrants a second pair of eyes
+- `loadSpaces` trusts the persisted JSON's tree shape. If a future code change adds a required node field, old persisted trees would load without it. Consider a schema version field (`v: 1`) in the stored object and a migration path. Low risk now (only `id`/`type`/`dir`/`a`/`b`/`ratio`/`app`/`doc`).
+- If a persisted workspace references a `doc` id that no longer exists (it always does, since `World` is deterministic, but if `World` ever becomes stateful/persisted differently), `w.doc(docId)` falls back gracefully — but the tile would silently rebind. Confirm the fallback is acceptable.
+
+### What should be done in the future
+- Add a schema version + a "reset layout" button in the UI (currently requires `localStorage.removeItem("pbui-workspaces")` from devtools).
+- Persist the per-tile `app` selection's doc binding explicitly if `World` docs ever become non-deterministic.
+
+### Code review instructions
+- `grep -n "loadSpaces\|saveSpaces\|LS_SPACES_KEY\|idc = maxN + 1" imports/pbui-gog.jsx`
+- Reproduce: split a tile + add a workspace → reload → layout intact. Then split again → new tile id > restored max.
+
+### Technical details
+- Stored shape: `{spaces: [{id, name, tree}, …], cur: "<spaceId>"}`. Tree nodes: `{id, type:"leaf"|"split", app?, doc?, dir?, a?, b?, ratio?}`.
